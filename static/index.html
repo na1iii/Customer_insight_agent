@@ -1,0 +1,1825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 客户智能洞察助理</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #060913;
+            --bg-secondary: #0b0f19;
+            --bg-card: rgba(17, 24, 39, 0.6);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --accent-primary: #3b82f6;
+            --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            --glass-bg: rgba(11, 15, 26, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.07);
+            --shadow-primary: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+            --active-color: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 炫彩渐变背景球 */
+        .bg-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            z-index: 0;
+            opacity: 0.35;
+            animation: float 25s infinite alternate ease-in-out;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: #1d4ed8;
+            top: -15%;
+            left: -10%;
+        }
+
+        .orb-2 {
+            width: 450px;
+            height: 450px;
+            background: #6d28d9;
+            bottom: -10%;
+            right: -5%;
+            animation-delay: -5s;
+        }
+
+        .orb-3 {
+            width: 350px;
+            height: 350px;
+            background: #be185d;
+            top: 35%;
+            right: 15%;
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(80px, 50px) scale(1.15); }
+        }
+
+        /* 登录/注册全屏模态框 */
+        .auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(4, 6, 12, 0.85);
+            backdrop-filter: blur(20px);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s ease;
+        }
+
+        .auth-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .auth-card {
+            width: 420px;
+            background: rgba(17, 25, 40, 0.75);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: var(--shadow-primary);
+            text-align: center;
+            transform: translateY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .auth-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .auth-header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 12px 16px;
+            border-radius: 12px;
+            outline: none;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.07);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+        }
+
+        .auth-error {
+            color: #ef4444;
+            font-size: 12px;
+            margin-bottom: 15px;
+            text-align: left;
+            min-height: 18px;
+        }
+
+        .auth-btn {
+            width: 100%;
+            background: var(--accent-gradient);
+            border: none;
+            color: #ffffff;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .auth-footer {
+            margin-top: 25px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .auth-footer a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* 主体布局 (三栏式) */
+        .app-container {
+            width: 96%;
+            max-width: 1440px;
+            height: 90vh;
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--glass-border);
+            border-radius: 28px;
+            box-shadow: var(--shadow-primary);
+            display: flex;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        /* 1. 最左侧：全局导航边栏 (Tabs Sidebar) */
+        .nav-sidebar {
+            width: 90px;
+            border-right: 1px solid var(--glass-border);
+            background: rgba(10, 15, 26, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 0;
+            justify-content: space-between;
+        }
+
+        .logo-container {
+            width: 50px;
+            height: 50px;
+            border-radius: 16px;
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+            margin-bottom: 40px;
+        }
+
+        .logo-container svg {
+            width: 28px;
+            height: 28px;
+            fill: #ffffff;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .nav-item {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            border: 1px solid transparent;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            background: transparent;
+        }
+
+        .nav-item:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-item.active {
+            color: #ffffff;
+            background: rgba(59, 130, 246, 0.12);
+            border-color: rgba(59, 130, 246, 0.25);
+        }
+
+        .nav-item.active::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 25%;
+            height: 50%;
+            width: 4px;
+            background-color: var(--accent-primary);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .nav-item svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
+            margin-bottom: 5px;
+        }
+
+        .nav-item span {
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .user-footer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .user-avatar-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .user-avatar-btn:hover {
+            transform: scale(1.05);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* 2. 中间：历史会话列表边栏 (Sessions Sidebar) */
+        .session-sidebar {
+            width: 280px;
+            border-right: 1px solid var(--glass-border);
+            background: rgba(10, 15, 26, 0.3);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 20px;
+        }
+
+        .session-sidebar-header {
+            margin-bottom: 20px;
+        }
+
+        .session-sidebar-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 12px;
+        }
+
+        .new-chat-btn {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .new-chat-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-primary);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .new-chat-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        .session-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .session-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .session-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+        }
+
+        .session-item {
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: transparent;
+            border: 1px solid transparent;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+            group: hover;
+        }
+
+        .session-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .session-item.active {
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .session-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            flex-grow: 1;
+        }
+
+        .session-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .session-date {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .delete-session-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+
+        .session-item:hover .delete-session-btn {
+            opacity: 1;
+        }
+
+        .delete-session-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .delete-session-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        /* 3. 右侧：聊天交互区域 (Chat Area) */
+        .chat-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+            min-width: 0;
+        }
+
+        .chat-header {
+            padding: 24px 30px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-status {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .chat-status h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .chat-status p {
+            font-size: 11.5px;
+            color: var(--text-secondary);
+        }
+
+        .chat-user-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .username-display {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+        }
+
+        .messages-container {
+            flex-grow: 1;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            scroll-behavior: smooth;
+        }
+
+        /* 消息气泡 */
+        .message-row {
+            display: flex;
+            width: 100%;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .message-row.user { justify-content: flex-end; }
+        .message-row.bot { justify-content: flex-start; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .message-row.user .avatar {
+            background: var(--accent-gradient);
+            margin-left: 14px;
+            order: 2;
+        }
+
+        .message-row.bot .avatar {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            margin-right: 14px;
+            order: 1;
+        }
+
+        .bubble {
+            max-width: 75%;
+            padding: 16px 20px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.6;
+            word-wrap: break-word;
+        }
+
+        .message-row.user .bubble {
+            background: var(--accent-gradient);
+            color: #ffffff;
+            border-top-right-radius: 4px;
+            order: 1;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .message-row.bot .bubble {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+            border-top-left-radius: 4px;
+            order: 2;
+        }
+
+        /* Markdown 内容特定样式 */
+        .bubble-md h2, .bubble-md h3 {
+            margin-bottom: 12px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .bubble-md h2 {
+            font-size: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 6px;
+            margin-top: 6px;
+        }
+        .bubble-md h3 {
+            font-size: 14px;
+            margin-top: 14px;
+        }
+        .bubble-md p {
+            margin-bottom: 12px;
+        }
+        .bubble-md blockquote {
+            border-left: 3px solid var(--accent-primary);
+            padding-left: 12px;
+            color: var(--text-secondary);
+            background: rgba(59, 130, 246, 0.04);
+            padding-top: 6px;
+            padding-bottom: 6px;
+            border-radius: 4px;
+            margin: 12px 0;
+        }
+        .bubble-md ul {
+            margin-left: 20px;
+            margin-bottom: 12px;
+        }
+        .bubble-md li {
+            margin-bottom: 6px;
+        }
+        .bubble-md .badge {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            color: #93c5fd;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 500;
+            margin-right: 6px;
+            display: inline-block;
+        }
+
+        /* 渲染卡片：长图 */
+        .card-img-container {
+            margin-top: 14px;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000000;
+            position: relative;
+            cursor: zoom-in;
+            max-width: 320px;
+            transition: all 0.3s;
+        }
+
+        .card-img-container:hover {
+            border-color: var(--accent-primary);
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+        }
+
+        .card-img-container img {
+            width: 100%;
+            display: block;
+            opacity: 0.85;
+            transition: opacity 0.3s;
+        }
+
+        .card-img-container:hover img { opacity: 1; }
+
+        .card-img-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+            padding: 12px;
+            font-size: 12px;
+            color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 渲染卡片：PDF文件 */
+        .card-file {
+            margin-top: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            max-width: 450px;
+            transition: border-color 0.3s;
+        }
+
+        .card-file:hover { border-color: #ef4444; }
+
+        .file-icon {
+            font-size: 30px;
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+
+        .file-details {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .file-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 10px;
+        }
+
+        .download-btn {
+            background: var(--accent-gradient);
+            border: none;
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: opacity 0.2s;
+            flex-shrink: 0;
+        }
+
+        .download-btn:hover { opacity: 0.9; }
+
+        .webhook-badge {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34d399;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 4px;
+            width: fit-content;
+        }
+
+        /* 渲染卡片：表格 */
+        .table-container {
+            margin-top: 14px;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            overflow: hidden;
+            width: 100%;
+            overflow-x: auto;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+            text-align: left;
+            min-width: 580px;
+        }
+
+        .custom-table th {
+            background: rgba(255, 255, 255, 0.04);
+            padding: 10px 12px;
+            color: #ffffff;
+            font-weight: 600;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .custom-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text-primary);
+        }
+
+        .custom-table tr:last-child td { border-bottom: none; }
+
+        .custom-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+        .table-link {
+            color: #60a5fa;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .table-link:hover { text-decoration: underline; }
+
+        .score-pill {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: #fbbf24;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 10.5px;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .table-action-row {
+            margin-top: 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .excel-btn {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34d399;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .excel-btn:hover {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            transform: translateY(-1px);
+        }
+
+        /* 审计日志面板 */
+        .logs-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 30px;
+            overflow-y: auto;
+            gap: 20px;
+        }
+
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logs-header h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .logs-refresh-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logs-refresh-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-primary);
+        }
+
+        .logs-console {
+            flex-grow: 1;
+            background: #04060b;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12.5px;
+            color: #cbd5e1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.8);
+        }
+
+        .log-row {
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.01);
+            border-left: 3px solid #64748b;
+        }
+
+        .log-row.INFO { border-left-color: #3b82f6; color: #93c5fd; }
+        .log-row.WARNING { border-left-color: #eab308; color: #fef08a; }
+        .log-row.ERROR { border-left-color: #ef4444; color: #fca5a5; }
+
+        .log-time { color: #64748b; margin-right: 10px; }
+        .log-level { font-weight: 700; margin-right: 10px; }
+        .log-msg { color: #e2e8f0; }
+        .log-details {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #94a3b8;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 6px 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        /* 对话输入区域 */
+        .input-area {
+            padding: 24px 30px 30px 30px;
+            background: transparent;
+        }
+
+        .input-wrapper {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            transition: all 0.3s;
+        }
+
+        .input-wrapper:focus-within {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .chat-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            padding: 10px 14px;
+        }
+
+        .chat-input::placeholder { color: #555e6b; }
+
+        .send-btn {
+            background: var(--accent-gradient);
+            border: none;
+            outline: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 14px rgba(59, 130, 246, 0.4);
+        }
+
+        .send-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #ffffff;
+            transition: transform 0.2s;
+        }
+
+        .send-btn:hover svg { transform: translate(2px, -2px); }
+
+        /* 气泡输入状态动画 */
+        .typing-loader {
+            display: flex;
+            gap: 4px;
+            padding: 8px 4px;
+            align-items: center;
+        }
+
+        .typing-dot {
+            width: 7px;
+            height: 7px;
+            background: #9ca3af;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        /* 全屏长图查看器 */
+        .image-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 15, 25, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 99999;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            overflow-y: auto;
+            padding: 40px 20px;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+
+        .image-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .overlay-content {
+            position: relative;
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .overlay-img {
+            max-width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .close-overlay-btn {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 100000;
+        }
+
+        .close-overlay-btn:hover { background: rgba(255, 255, 255, 0.2); }
+    </style>
+</head>
+<body>
+
+    <!-- 炫光背景 -->
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <!-- 用户登录/注册模态窗 -->
+    <div id="authModal" class="auth-overlay">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2 id="authTitle">🏢 客户洞察智能体</h2>
+                <p id="authSubtitle">请输入凭据以访问商业洞察大脑</p>
+            </div>
+            <div class="auth-body">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="usernameInput" placeholder="请输入您的用户名" />
+                </div>
+                <div class="input-group">
+                    <label>密码</label>
+                    <input type="password" id="passwordInput" placeholder="请输入密码" onkeydown="handleAuthKeydown(event)" />
+                </div>
+                <div class="auth-error" id="authError"></div>
+                <button class="auth-btn" id="authSubmitBtn" onclick="submitAuth()">立即登录</button>
+            </div>
+            <div class="auth-footer">
+                <span id="authToggleText">还没有账号？</span>
+                <a href="javascript:void(0)" id="authToggleLink" onclick="toggleAuthMode()">立即注册</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统主体容器 -->
+    <div class="app-container">
+        <!-- 1. 全局导航侧边栏 -->
+        <nav class="nav-sidebar">
+            <div class="logo-container">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/>
+                </svg>
+            </div>
+
+            <div class="nav-menu">
+                <button class="nav-item active" onclick="switchScene('customer')" id="nav-customer">
+                    <svg viewBox="0 0 24 24"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></svg>
+                    <span>企业画像</span>
+                </button>
+                <button class="nav-item" onclick="switchScene('regional')" id="nav-regional">
+                    <svg viewBox="0 0 24 24"><path d="M12,3L2,12H5V20H19V12H22L12,3M12,7.7C14.1,7.7 15.8,9.4 15.8,11.5C15.8,14.5 12,18.2 12,18.2C12,18.2 8.2,14.5 8.2,11.5C8.2,9.4 9.9,7.7 12,7.7M12,10A1.5,1.5 0 0,0 10.5,11.5A1.5,1.5 0 0,0 12,13A1.5,1.5 0 0,0 13.5,11.5A1.5,1.5 0 0,0 12,10Z"/></svg>
+                    <span>区域分析</span>
+                </button>
+                <button class="nav-item" onclick="switchScene('industry')" id="nav-industry">
+                    <svg viewBox="0 0 24 24"><path d="M19,3H5C3.89,3 3,3.89 3,5V19C3,20.1 3.89,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.89 20.1,3 19,3M19,19H5V5H19V19M7,7H17V9H7V7M7,11H17V13H7V11M7,15H14V17H7V15Z"/></svg>
+                    <span>行业深度</span>
+                </button>
+                <button class="nav-item" onclick="switchScene('potential')" id="nav-potential">
+                    <svg viewBox="0 0 24 24"><path d="M16,17H5V7H16L20,12L16,17M14,10.5A1.5,1.5 0 1,0 15.5,12A1.5,1.5 0 0,0 14,10.5M5,5H16A2,2 0 0,1 18,6.8L23,12L18,17.2A2,2 0 0,1 16,19H5A2,2 0 0,1 3,17V7A2,2 0 0,1 5,5Z"/></svg>
+                    <span>高潜推荐</span>
+                </button>
+                <button class="nav-item" onclick="switchScene('logs')" id="nav-logs">
+                    <svg viewBox="0 0 24 24"><path d="M12,22A10,10 0 1,1 22,12A10,10 0 0,1 12,22M12,4A8,8 0 1,0 20,12A8,8 0 0,0 12,4M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg>
+                    <span>审计日志</span>
+                </button>
+            </div>
+
+            <div class="user-footer">
+                <div class="user-avatar-btn" title="查看个人中心">👤</div>
+            </div>
+        </nav>
+
+        <!-- 2. 会话历史侧边栏 -->
+        <aside class="session-sidebar" id="sessionSidebar">
+            <div class="session-sidebar-header">
+                <h3 id="sessionSidebarTitle">企业画像</h3>
+                <button class="new-chat-btn" onclick="startNewConversation()">
+                    <svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+                    新建对话
+                </button>
+            </div>
+            <div class="session-list" id="sessionList">
+                <!-- 历史会话项动态加载 -->
+            </div>
+        </aside>
+
+        <!-- 3. 主交互界面 -->
+        <main class="chat-area" id="chatArea">
+            <header class="chat-header">
+                <div class="chat-status">
+                    <h2 id="chatHeading">🏢 企业画像分析查询</h2>
+                    <p id="chatSubheading">输入你想研究的客户主体（如“上海电信”），Advanced RAG 引擎将提供画像、痛点及契机分析。</p>
+                </div>
+                <div class="chat-user-profile">
+                    <span class="username-display" id="usernameDisplay">访客</span>
+                    <button class="logout-btn" onclick="logout()">退出注销</button>
+                </div>
+            </header>
+
+            <!-- 聊天记录容器 -->
+            <section class="messages-container" id="messagesContainer">
+                <!-- 会话消息通过 JS 动态插入 -->
+            </section>
+
+            <!-- 对话底栏 -->
+            <footer class="input-area" id="inputArea">
+                <div class="input-wrapper">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="在此输入想执行的洞察任务..." onkeydown="handleChatKeydown(event)" />
+                    <button class="send-btn" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/>
+                        </svg>
+                    </button>
+                </div>
+            </footer>
+        </main>
+
+        <!-- 4. 独立日志监控面板 (仅在Logs页显示) -->
+        <main class="logs-panel" id="logsPanel" style="display: none;">
+            <div class="logs-header">
+                <div>
+                    <h3>⚙️ 系统运行审计日志 (数据库存储)</h3>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        当前所有事件通过 SQLAlchemy 连接池直接持久化保存在后台库表中。
+                    </p>
+                </div>
+                <button class="logs-refresh-btn" onclick="fetchSystemLogs()">🔄 刷新日志流</button>
+            </div>
+            <div class="logs-console" id="logsConsole">
+                <!-- 日志输出 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 全屏长图查看弹层 -->
+    <div class="image-overlay" id="imageOverlay">
+        <button class="close-overlay-btn" onclick="closeOverlay()">✕</button>
+        <div class="overlay-content">
+            <img class="overlay-img" id="overlayImg" src="" alt="高清晰度长图报告" />
+        </div>
+    </div>
+
+    <script>
+        // 全局状态管理
+        let currentUser = null;
+        let activeScene = 'customer'; // 'customer', 'regional', 'industry', 'potential', 'logs'
+        let activeConversationId = null;
+        let isRegisterMode = false;
+
+        const sceneDetails = {
+            customer: {
+                title: "企业画像分析",
+                heading: "🏢 企业画像分析查询",
+                subheading: "输入您想研究的客户主体（例如：'上海电信'），系统将整合 Advanced RAG 引擎的本地知识库与时效性重排，输出痛点及商业契机。",
+                placeholder: "输入客户企业名称（如：上海电信、钛度科技）..."
+            },
+            regional: {
+                title: "区域报告经济",
+                heading: "📊 区域经济分析网页报告",
+                subheading: "输入目标行政区名称（例如：'静安区'），系统将从数据库读取指标，在前端使用 ECharts 动态渲染出高颜值的自适应交互式分析网页，支持鼠标悬浮和缩放交互。",
+                placeholder: "输入要分析的区域名称（如：静安区、杨浦区）..."
+            },
+            industry: {
+                title: "行业深度剖析",
+                heading: "📄 行业深度研究 HTML 报告",
+                subheading: "输入行业类型（例如：'通信行业'），系统将结合大模型深度扩写框架，编译输出一份符合 A4 纸张排版比例的标准 HTML 报告，支持一键原生打印及保存为 PDF，并自动推送至群机器人中。",
+                placeholder: "输入要导出的行业领域（如：通信行业、半导体行业）..."
+            },
+            potential: {
+                title: "高潜客户推荐",
+                heading: "🎯 高潜客户意向及线索库",
+                subheading: "输入关键词（如：'电信'、'上海'），系统将筛选后台大客户线索，返回结构化表格，支持 pandas 自动封装为 Excel 文档打包下载。",
+                placeholder: "输入检索线索特征（如：通信、大数据，留空获取全部）..."
+            }
+        };
+
+        // 页面初始化加载
+        window.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        // ------------------ 1. 用户登录/鉴权逻辑 ------------------
+
+        function checkAuth() {
+            const savedUser = localStorage.getItem('insight_agent_user');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                document.getElementById('authModal').classList.add('hidden');
+                document.getElementById('usernameDisplay').innerText = currentUser.username;
+                switchScene('customer');
+            } else {
+                document.getElementById('authModal').classList.remove('hidden');
+            }
+        }
+
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            document.getElementById('authTitle').innerText = isRegisterMode ? "📝 注册新账号" : "🏢 客户洞察智能体";
+            document.getElementById('authSubtitle').innerText = isRegisterMode ? "创建一个用于记录工作日志和会话历史的账号" : "请输入凭据以访问商业洞察大脑";
+            document.getElementById('authSubmitBtn').innerText = isRegisterMode ? "立即注册并登录" : "立即登录";
+            document.getElementById('authToggleText').innerText = isRegisterMode ? "已有账号？" : "还没有账号？";
+            document.getElementById('authToggleLink').innerText = isRegisterMode ? "登录已有账号" : "立即注册";
+            document.getElementById('authError').innerText = "";
+        }
+
+        async function submitAuth() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const errorEl = document.getElementById('authError');
+
+            if (!username || !password) {
+                errorEl.innerText = "⚠️ 用户名和密码不能为空";
+                return;
+            }
+
+            const url = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    errorEl.innerText = "❌ " + (data.detail || "请求失败");
+                    return;
+                }
+
+                // 登录成功
+                currentUser = data.user;
+                localStorage.setItem('insight_agent_user', JSON.stringify(currentUser));
+                document.getElementById('authModal').classList.add('hidden');
+                document.getElementById('usernameDisplay').innerText = currentUser.username;
+                
+                // 清空输入框并切换到主页
+                document.getElementById('usernameInput').value = "";
+                document.getElementById('passwordInput').value = "";
+                errorEl.innerText = "";
+                
+                switchScene('customer');
+            } catch (err) {
+                errorEl.innerText = "❌ 无法连接到身份验证服务";
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            activeConversationId = null;
+            localStorage.removeItem('insight_agent_user');
+            document.getElementById('authModal').classList.remove('hidden');
+        }
+
+        function handleAuthKeydown(e) {
+            if (e.key === 'Enter') {
+                submitAuth();
+            }
+        }
+
+        // ------------------ 2. 场景与侧边栏切换 ------------------
+
+        function switchScene(scene) {
+            activeScene = scene;
+            
+            // 更新导航 Tab 激活高亮
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.getElementById(`nav-${scene}`).classList.add('active');
+
+            if (scene === 'logs') {
+                // 切换到审计日志面板
+                document.getElementById('sessionSidebar').style.display = 'none';
+                document.getElementById('chatArea').style.display = 'none';
+                document.getElementById('logsPanel').style.display = 'flex';
+                fetchSystemLogs();
+            } else {
+                // 切换到场景对话面板
+                document.getElementById('sessionSidebar').style.display = 'flex';
+                document.getElementById('chatArea').style.display = 'flex';
+                document.getElementById('logsPanel').style.display = 'none';
+
+                // 更新场景文案描述
+                const meta = sceneDetails[scene];
+                document.getElementById('sessionSidebarTitle').innerText = meta.title;
+                document.getElementById('chatHeading').innerText = meta.heading;
+                document.getElementById('chatSubheading').innerText = meta.subheading;
+                document.getElementById('chatInput').placeholder = meta.placeholder;
+
+                // 加载当前场景的历史会话列表
+                fetchConversations();
+            }
+        }
+
+        // ------------------ 3. 会话与消息历史逻辑 ------------------
+
+        async function fetchConversations() {
+            const listEl = document.getElementById('sessionList');
+            listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;">正在载入历史...</div>';
+
+            try {
+                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=${activeScene}`);
+                const data = await response.json();
+                
+                listEl.innerHTML = '';
+                if (data.length === 0) {
+                    listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;line-height:1.5;">暂无历史对话<br/>点击上方按钮新建</div>';
+                    activeConversationId = null;
+                    clearChat();
+                    showWelcomeMessage();
+                    return;
+                }
+
+                data.forEach((conv, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'session-item';
+                    item.id = `conv-${conv.id}`;
+                    item.onclick = () => selectConversation(conv.id);
+
+                    item.innerHTML = `
+                        <div class="session-info">
+                            <span class="session-title" id="title-${conv.id}">${conv.title}</span>
+                            <span class="session-date">${conv.created_at}</span>
+                        </div>
+                        <button class="delete-session-btn" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="删除对话">
+                            <svg viewBox="0 0 24 24"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>
+                        </button>
+                    `;
+                    listEl.appendChild(item);
+                });
+
+                // 默认选择第一个会话
+                selectConversation(data[0].id);
+
+            } catch (err) {
+                listEl.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:12px;padding:20px;">会话列表获取失败</div>';
+            }
+        }
+
+        async function startNewConversation(optionalTitle = "新对话") {
+            try {
+                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=${activeScene}&title=${encodeURIComponent(optionalTitle)}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    activeConversationId = data.id;
+                    await fetchConversations();
+                }
+            } catch (err) {
+                alert("新建会话失败，请检查网络");
+            }
+        }
+
+        async function selectConversation(id) {
+            activeConversationId = id;
+            document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+            
+            const el = document.getElementById(`conv-${id}`);
+            if (el) el.classList.add('active');
+
+            clearChat();
+            
+            // 拉取此会话的历史消息
+            try {
+                const response = await fetch(`/api/conversations/${id}`);
+                const messages = await response.json();
+                
+                if (messages.length === 0) {
+                    showWelcomeMessage();
+                } else {
+                    messages.forEach(msg => {
+                        if (msg.role === 'user') {
+                            appendUserBubble(msg.content);
+                        } else {
+                            appendBotBubble(msg.content, msg.data_payload);
+                        }
+                    });
+                }
+                scrollToBottom();
+            } catch (err) {
+                appendBotBubble("❌ <b>获取历史聊天记录失败</b>，请点击刷新或重试。");
+            }
+        }
+
+        async function deleteConversation(id) {
+            if (!confirm("确定要彻底删除该会话记录吗？这将无法恢复。")) return;
+            try {
+                const response = await fetch(`/api/conversations/${id}?user_id=${currentUser.id}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    if (activeConversationId === id) activeConversationId = null;
+                    fetchConversations();
+                }
+            } catch (err) {
+                alert("删除失败，请稍后重试");
+            }
+        }
+
+        function clearChat() {
+            document.getElementById('messagesContainer').innerHTML = '';
+        }
+
+        function showWelcomeMessage() {
+            const container = document.getElementById('messagesContainer');
+            const row = document.createElement('div');
+            row.className = 'message-row bot';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = '🤖';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble bubble-md';
+
+            const meta = sceneDetails[activeScene];
+            bubble.innerHTML = `
+                你好！我是您的<b>AI 客户洞察助理</b>。<br/><br/>
+                当前已进入 <b>【${meta.title}】</b> 专属操作场景板块。
+                你可以根据界面下方的引导向我输入查询信息。
+            `;
+
+            row.appendChild(avatar);
+            row.appendChild(bubble);
+            container.appendChild(row);
+        }
+
+        // ------------------ 4. 实时聊天对话逻辑 ------------------
+
+        function handleChatKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const inputEl = document.getElementById('chatInput');
+            const text = inputEl.value.trim();
+            if (!text) return;
+
+            // 1. 如果当前没有活跃会话，先自动创建会话
+            if (!activeConversationId) {
+                await startNewConversation(text.substring(0, 12) + "...");
+            }
+
+            // 更新会话标题为首次提问
+            const titleEl = document.getElementById(`title-${activeConversationId}`);
+            if (titleEl && titleEl.innerText === "新对话") {
+                titleEl.innerText = text.substring(0, 12);
+            }
+
+            inputEl.value = '';
+            appendUserBubble(text);
+            scrollToBottom();
+
+            // 显示思考动画骨架
+            const loadingId = appendLoading();
+            scrollToBottom();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: text,
+                        scene: activeScene,
+                        conversation_id: activeConversationId,
+                        user_id: currentUser.id
+                    })
+                });
+
+                const data = await response.json();
+                removeLoading(loadingId);
+
+                if (!response.ok) {
+                    appendBotBubble(`❌ <b>后端处理错误</b>：${data.detail || '服务未正常响应。'}`);
+                } else {
+                    appendBotBubble(data.content, data.data_payload);
+                }
+
+            } catch (err) {
+                removeLoading(loadingId);
+                appendBotBubble(`❌ <b>连接失败</b>：后端服务异常或响应超时。`);
+            }
+            scrollToBottom();
+        }
+
+        function appendUserBubble(content) {
+            const container = document.getElementById('messagesContainer');
+            const row = document.createElement('div');
+            row.className = 'message-row user';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = '👤';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble bubble-md';
+            bubble.innerText = content;
+
+            row.appendChild(avatar);
+            row.appendChild(bubble);
+            container.appendChild(row);
+        }
+
+        function appendBotBubble(text, payload = null) {
+            const container = document.getElementById('messagesContainer');
+            const row = document.createElement('div');
+            row.className = 'message-row bot';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = '🤖';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble bubble-md';
+            bubble.innerHTML = marked.parse(text);
+
+            // 根据数据负载在气泡内渲染多模态卡片
+            if (payload) {
+                if (payload.type === 'image_link') {
+                    const card = document.createElement('div');
+                    card.className = 'card-img-container';
+                    card.onclick = () => openOverlay(payload.url);
+                    card.innerHTML = `
+                        <img src="${payload.url}" alt="分析长图" />
+                        <div class="card-img-overlay">
+                            <span>🔍 点击查看高清分析长图报告</span>
+                            <span>PNG</span>
+                        </div>
+                    `;
+                    bubble.appendChild(card);
+                } 
+                else if (payload.type === 'html_link') {
+                    const card = document.createElement('div');
+                    card.className = 'card-file';
+                    card.style.borderColor = 'var(--accent-primary)';
+                    card.innerHTML = `
+                        <div class="file-icon" style="background:rgba(59, 130, 246, 0.15);color:#60a5fa;">📊</div>
+                        <div class="file-details">
+                            <span class="file-name">${payload.region_name} 经济运行分析报告</span>
+                            <span class="file-meta"><span>交互式 HTML 网页</span> | <span>包含数据与可视化图表</span></span>
+                        </div>
+                        <a href="${payload.url}" target="_blank" class="download-btn" style="background:var(--accent-gradient)">打开网页</a>
+                    `;
+                    bubble.appendChild(card);
+                } 
+                else if (payload.type === 'file_link') {
+                    const card = document.createElement('div');
+                    card.className = 'card-file';
+                    const badge = payload.webhook_pushed 
+                        ? `<span class="webhook-badge">✓ 已推送至群聊天机器人</span>`
+                        : `<span class="webhook-badge" style="background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.25);color:#f87171">✗ Webhook群推送未开启</span>`;
+                    
+                    const isHtml = payload.file_type === 'html' || payload.url.endsWith('.html');
+                    const fileIcon = isHtml ? '🌐' : '📕';
+                    const fileDesc = isHtml ? '<span>HTML 报告网页</span> | <span>支持打印为 A4 PDF</span>' : '<span>PDF 报告文档</span> | <span>A4 标准尺寸</span>';
+                    const btnText = isHtml ? '浏览报告' : '下载报告';
+                    const downloadAttr = isHtml ? '' : 'download';
+                    const targetAttr = isHtml ? 'target="_blank"' : '';
+                    
+                    card.innerHTML = `
+                        <div class="file-icon" style="${isHtml ? 'background:rgba(59, 130, 246, 0.15);color:#60a5fa;' : ''}">${fileIcon}</div>
+                        <div class="file-details">
+                            <span class="file-name">${payload.title}</span>
+                            <span class="file-meta">${fileDesc}</span>
+                            ${badge}
+                        </div>
+                        <a href="${payload.url}" ${downloadAttr} ${targetAttr} class="download-btn">${btnText}</a>
+                    `;
+                    bubble.appendChild(card);
+                } 
+                else if (payload.type === 'table') {
+                    const card = document.createElement('div');
+                    card.className = 'table-container';
+                    
+                    let trs = '';
+                    payload.data.forEach(item => {
+                        trs += `
+                            <tr>
+                                <td><a href="${item.link}" target="_blank" class="table-link">${item.name}</a></td>
+                                <td>${item.industry}</td>
+                                <td>${item.scale}</td>
+                                <td><span class="score-pill">${item.score}分</span></td>
+                                <td title="${item.reason}">${item.reason.substring(0, 14)}...</td>
+                                <td>${item.contact}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    card.innerHTML = `
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>企业名称</th>
+                                    <th>行业</th>
+                                    <th>规模</th>
+                                    <th>匹配分</th>
+                                    <th>推荐背景</th>
+                                    <th>联系人</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${trs}
+                            </tbody>
+                        </table>
+                    `;
+                    bubble.appendChild(card);
+
+                    // 导出 Excel 链接
+                    if (payload.excel_url) {
+                        const excelRow = document.createElement('div');
+                        excelRow.className = 'table-action-row';
+                        excelRow.innerHTML = `
+                            <a href="${payload.excel_url}" download class="excel-btn">
+                                <svg style="width:14px;height:14px;fill:#34d399" viewBox="0 0 24 24">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,8H14L20,14V20A2,2 0 0,0 18,22H6A2,2 0 0,0 4,20V4A2,2 0 0,0 6,2H14M13,3.5L18.5,9H13V3.5M8,11V13H11V11H8M12,11V13H15V11H12M8,14V16H11V14H8M12,14V16H15V14H12M8,17V19H11V17H8M12,17V19H15V17H12Z"/>
+                                </svg>
+                                导出完整的客户意向名单 Excel (.xlsx)
+                            </a>
+                        `;
+                        bubble.appendChild(excelRow);
+                    }
+                }
+            }
+
+            row.appendChild(avatar);
+            row.appendChild(bubble);
+            container.appendChild(row);
+        }
+
+        function appendLoading() {
+            const container = document.getElementById('messagesContainer');
+            const id = 'loading_' + Date.now();
+            const row = document.createElement('div');
+            row.className = 'message-row bot';
+            row.id = id;
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = '🤖';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.innerHTML = `
+                <div class="typing-loader">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+
+            row.appendChild(avatar);
+            row.appendChild(bubble);
+            container.appendChild(row);
+            return id;
+        }
+
+        function removeLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('messagesContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ------------------ 5. 审计日志查询展示 ------------------
+
+        async function fetchSystemLogs() {
+            const consoleEl = document.getElementById('logsConsole');
+            consoleEl.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;">正在连接数据库，拉取系统审计日志流...</div>';
+
+            try {
+                const response = await fetch('/api/system/logs');
+                const logs = await response.json();
+                
+                consoleEl.innerHTML = '';
+                if (logs.length === 0) {
+                    consoleEl.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;">暂无日志输出。</div>';
+                    return;
+                }
+
+                logs.forEach(log => {
+                    const row = document.createElement('div');
+                    row.className = `log-row ${log.level}`;
+                    
+                    const timeSpan = `<span class="log-time">[${log.timestamp}]</span>`;
+                    const levelSpan = `<span class="log-level">[${log.level}]</span>`;
+                    const sceneSpan = log.scene ? `<span style="color:#a855f7;margin-right:10px;">[场景:${log.scene}]</span>` : '';
+                    const msgSpan = `<span class="log-msg">${log.message}</span>`;
+                    
+                    row.innerHTML = timeSpan + levelSpan + sceneSpan + msgSpan;
+                    
+                    if (log.details) {
+                        const detailsDiv = document.createElement('pre');
+                        detailsDiv.className = 'log-details';
+                        detailsDiv.innerText = log.details;
+                        row.appendChild(detailsDiv);
+                    }
+                    
+                    consoleEl.appendChild(row);
+                });
+            } catch (err) {
+                consoleEl.innerHTML = '<div style="color:#ef4444;font-size:13px;">⚠️ 数据库连接中断，日志拉取异常。</div>';
+            }
+        }
+
+        // ------------------ 6. 多媒体大图层弹窗 ------------------
+
+        function openOverlay(src) {
+            const overlay = document.getElementById('imageOverlay');
+            const overlayImg = document.getElementById('overlayImg');
+            overlayImg.src = src;
+            overlay.classList.add('active');
+        }
+
+        function closeOverlay() {
+            const overlay = document.getElementById('imageOverlay');
+            const overlayImg = document.getElementById('overlayImg');
+            overlay.classList.remove('active');
+            overlayImg.src = '';
+        }
+    </script>
+</body>
+</html>
