@@ -24,11 +24,21 @@ def send_to_webhook(webhook_url: str, text: str, file_url: str = None) -> dict:
     if file_url:
         payload["markdown"]["content"] += f"\n\n📎 **报告下载链接**: [点击下载]({file_url})"
         
-    print("\n" + "="*50)
-    print(f"【SIMULATED WEBHOOK】")
-    print(f"Webhook URL: {webhook_url or '未配置（仅本地模拟）'}")
-    print(f"Payload: {payload}")
-    print("="*50 + "\n")
+    try:
+        print("\n" + "="*50)
+        print(f"【SIMULATED WEBHOOK】")
+        print(f"Webhook URL: {webhook_url or '未配置（仅本地模拟）'}")
+        try:
+            print(f"Payload: {payload}")
+        except Exception:
+            try:
+                safe_payload = str(payload).encode('gbk', errors='replace').decode('gbk')
+                print(f"Payload: {safe_payload}")
+            except Exception:
+                print(f"Payload: <Unable to print due to encoding>")
+        print("="*50 + "\n")
+    except Exception:
+        pass
     
     if not webhook_url or "your_webhook_here" in webhook_url:
         return {"status": "mock_success", "payload": payload}

@@ -37,10 +37,15 @@ def get_intent_router(user_input: str) -> TaskCommand:
                 return TaskCommand(intent="regional_report", keyword=f"{r}区")
                 
         # 3. 行业报告意图
-        for ind in ["通信", "人工智能", "ai", "医疗"]:
+        for ind in ["通信", "人工智能", "ai", "医疗", "医药", "生物医药"]:
             if ind in text_lower and any(w in text_lower for w in ["行业", "pdf", "html", "发送", "群", "报告"]):
-                keyword = "人工智能行业" if ind in ["人工智能", "ai"] else f"{ind}行业"
+                keyword = "人工智能行业" if ind in ["人工智能", "ai"] else ("医药行业" if ind in ["医疗", "医药", "生物医药"] else f"{ind}行业")
                 return TaskCommand(intent="industry_report", keyword=keyword)
+                
+        # 3.1 针对未指定行业但请求行业报告的兜底
+        if "行业报告" in text_lower or "行业研报" in text_lower or (("报告" in text_lower or "研报" in text_lower) and ("生成" in text_lower or "帮我" in text_lower or "帮他" in text_lower or "一份" in text_lower)):
+            return TaskCommand(intent="industry_report", keyword="全行业")
+
                 
         # 4. 查询客户意图（判断公司名）
         for comp in ["电信", "移动", "联通", "钛度", "特斯拉"]:
@@ -87,7 +92,7 @@ def get_intent_router(user_input: str) -> TaskCommand:
             "   - 'regional_report' (当用户要查看某行政区的经济指标、图表、长图或区级报告时)\n"
             "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或要求发送报告到群聊时)\n"
             "   - 'high_potential' (当用户要求查看高潜客户、推荐名单、展示客户表格或导出 Excel 时)\n"
-            "2. 'keyword': 提取的主体名称，如公司名（如上海电信）、行政区（如静安区）、行业（如通信行业）。如果没有提取到则为 null。\n\n"
+            "2. 'keyword': 提取的主体名称，如公司名（如上海电信）、行政区（如静安区）、行业（如通信行业）。如果用户请求生成行业报告，但未指定具体行业（例如“帮我生成一份行业报告”、“生成一份行业报告”、“行业报告”），则 keyword 必须为“全行业”；如果没有提取到其他主体，则为 null。\n\n"
             "注意：你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
         )
         

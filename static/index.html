@@ -21,6 +21,25 @@
             --glass-border: rgba(255, 255, 255, 0.07);
             --shadow-primary: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
             --active-color: #10b981;
+            --sidebar-bg: rgba(10, 15, 26, 0.35);
+        }
+
+        :root.light-theme {
+            --bg-primary: #f1f3f9;
+            --bg-secondary: #ffffff;
+            --bg-card: rgba(255, 255, 255, 0.7);
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --accent-primary: #2563eb;
+            --accent-gradient: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(0, 0, 0, 0.08);
+            --shadow-primary: 0 10px 30px rgba(0, 0, 0, 0.06);
+            --sidebar-bg: rgba(255, 255, 255, 0.6);
+        }
+
+        :root.light-theme .bg-orb {
+            opacity: 0.15;
         }
 
         * {
@@ -122,6 +141,7 @@
             font-weight: 700;
             background: var(--accent-gradient);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 8px;
         }
@@ -223,129 +243,26 @@
             z-index: 1;
         }
 
-        /* 1. 最左侧：全局导航边栏 (Tabs Sidebar) */
-        .nav-sidebar {
-            width: 90px;
-            border-right: 1px solid var(--glass-border);
-            background: rgba(10, 15, 26, 0.6);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 30px 0;
-            justify-content: space-between;
-        }
-
-        .logo-container {
-            width: 50px;
-            height: 50px;
-            border-radius: 16px;
-            background: var(--accent-gradient);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-            margin-bottom: 40px;
-        }
-
-        .logo-container svg {
-            width: 28px;
-            height: 28px;
-            fill: #ffffff;
-        }
-
-        .nav-menu {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            width: 100%;
-            align-items: center;
-        }
-
-        .nav-item {
-            width: 64px;
-            height: 64px;
-            border-radius: 18px;
-            border: 1px solid transparent;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            background: transparent;
-        }
-
-        .nav-item:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.03);
-            border-color: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-item.active {
-            color: #ffffff;
-            background: rgba(59, 130, 246, 0.12);
-            border-color: rgba(59, 130, 246, 0.25);
-        }
-
-        .nav-item.active::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 25%;
-            height: 50%;
-            width: 4px;
-            background-color: var(--accent-primary);
-            border-radius: 0 4px 4px 0;
-        }
-
-        .nav-item svg {
-            width: 22px;
-            height: 22px;
-            fill: currentColor;
-            margin-bottom: 5px;
-        }
-
-        .nav-item span {
-            font-size: 10px;
-            font-weight: 500;
-        }
-
-        .user-footer {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .user-avatar-btn {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid var(--glass-border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .user-avatar-btn:hover {
-            transform: scale(1.05);
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        /* 2. 中间：历史会话列表边栏 (Sessions Sidebar) */
+        /* 1. 左侧历史会话列表边栏 (Session Sidebar) - 支持平滑折叠 */
         .session-sidebar {
             width: 280px;
             border-right: 1px solid var(--glass-border);
-            background: rgba(10, 15, 26, 0.3);
+            background: var(--sidebar-bg);
             display: flex;
             flex-direction: column;
             padding: 24px 20px;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .sidebar-collapsed .session-sidebar {
+            width: 0;
+            padding-left: 0;
+            padding-right: 0;
+            opacity: 0;
+            pointer-events: none;
+            border-right-color: transparent;
         }
 
         .session-sidebar-header {
@@ -355,7 +272,7 @@
         .session-sidebar-header h3 {
             font-size: 16px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--text-primary);
             margin-bottom: 12px;
         }
 
@@ -363,7 +280,7 @@
             width: 100%;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--glass-border);
-            color: #ffffff;
+            color: var(--text-primary);
             padding: 12px;
             border-radius: 12px;
             font-size: 13.5px;
@@ -414,7 +331,6 @@
             justify-content: space-between;
             align-items: center;
             transition: all 0.2s;
-            group: hover;
         }
 
         .session-item:hover {
@@ -437,7 +353,7 @@
         .session-title {
             font-size: 13px;
             font-weight: 500;
-            color: #ffffff;
+            color: var(--text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -474,21 +390,52 @@
             fill: currentColor;
         }
 
-        /* 3. 右侧：聊天交互区域 (Chat Area) */
+        /* 2. 右侧：聊天交互区域 (Chat Area) */
         .chat-area {
             flex-grow: 1;
             display: flex;
             flex-direction: column;
             background: transparent;
             min-width: 0;
+            overflow: hidden;
         }
 
         .chat-header {
-            padding: 24px 30px;
+            padding: 20px 30px;
             border-bottom: 1px solid var(--glass-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .sidebar-toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+        }
+
+        .sidebar-toggle-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
         }
 
         .chat-status {
@@ -500,7 +447,7 @@
         .chat-status h2 {
             font-size: 16px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--text-primary);
         }
 
         .chat-status p {
@@ -517,7 +464,7 @@
         .username-display {
             font-size: 13.5px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--text-primary);
         }
 
         .logout-btn {
@@ -949,8 +896,14 @@
 
         /* 对话输入区域 */
         .input-area {
-            padding: 24px 30px 30px 30px;
+            padding: 16px 0;
             background: transparent;
+            width: 100%;
+            transition: all 0.3s;
+        }
+
+        .chat-area > .input-area {
+            padding: 24px 30px 30px 30px;
         }
 
         .input-wrapper {
@@ -1010,6 +963,35 @@
         }
 
         .send-btn:hover svg { transform: translate(2px, -2px); }
+
+        .stop-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            outline: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.15);
+            flex-shrink: 0;
+            margin-right: 8px;
+        }
+
+        .stop-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            transform: scale(1.05);
+        }
+
+        .stop-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #ef4444;
+        }
 
         /* 气泡输入状态动画 */
         .typing-loader {
@@ -1095,6 +1077,272 @@
         }
 
         .close-overlay-btn:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* 欢迎界面样式 */
+        .welcome-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 30px;
+            flex-grow: 1;
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto;
+            gap: 30px;
+            width: 100%;
+            overflow-y: auto;
+        }
+
+        .welcome-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .welcome-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+        }
+
+        .welcome-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .welcome-logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 20px;
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.45);
+            margin-bottom: 8px;
+        }
+
+        .welcome-logo svg {
+            width: 36px;
+            height: 36px;
+            fill: #ffffff;
+        }
+
+        .welcome-title {
+            font-size: 26px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            max-width: 500px;
+            line-height: 1.5;
+        }
+
+        /* 建议指令卡片 */
+        .welcome-suggestions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            width: 100%;
+            max-width: 700px;
+        }
+
+        .suggestion-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .suggestion-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(59, 130, 246, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .suggestion-icon {
+            font-size: 22px;
+            background: rgba(255, 255, 255, 0.05);
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+
+        .suggestion-card:hover .suggestion-icon {
+            background: rgba(59, 130, 246, 0.15);
+            color: #ffffff;
+        }
+
+        .suggestion-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .suggestion-text strong {
+            font-size: 13.5px;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .suggestion-text span {
+            font-size: 11.5px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        #welcomeInputPlaceholder {
+            width: 100%;
+            max-width: 700px;
+            margin-top: 10px;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .theme-toggle-btn {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+            border-color: var(--accent-primary);
+        }
+
+        /* 报告生成中进度动画 */
+        .report-generating {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 22px;
+            margin-top: 10px;
+            max-width: 520px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            animation: pulseBg 3s infinite alternate;
+        }
+
+        @keyframes pulseBg {
+            0% { background: rgba(255, 255, 255, 0.02); }
+            100% { background: rgba(255, 255, 255, 0.05); }
+        }
+
+        .generating-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 14.5px;
+            color: #ffffff;
+        }
+
+        .generating-icon {
+            font-size: 20px;
+            animation: spinIcon 2s infinite linear;
+        }
+
+        @keyframes spinIcon {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        .generating-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .generating-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+
+        .generating-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .generating-step {
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .generating-step::before {
+            content: '○';
+            color: var(--text-secondary);
+            font-weight: bold;
+        }
+
+        .generating-step.active {
+            color: #60a5fa;
+            font-weight: 500;
+        }
+
+        .generating-step.active::before {
+            content: '●';
+            color: #3b82f6;
+            animation: blinkDot 1s infinite alternate;
+        }
+
+        .generating-step.done {
+            color: #34d399;
+        }
+
+        .generating-step.done::before {
+            content: '✓';
+            color: #10b981;
+        }
+
+        @keyframes blinkDot {
+            0% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -1132,62 +1380,40 @@
 
     <!-- 系统主体容器 -->
     <div class="app-container">
-        <!-- 1. 全局导航侧边栏 -->
-        <nav class="nav-sidebar">
-            <div class="logo-container">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/>
-                </svg>
-            </div>
-
-            <div class="nav-menu">
-                <button class="nav-item active" onclick="switchScene('customer')" id="nav-customer">
-                    <svg viewBox="0 0 24 24"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></svg>
-                    <span>企业画像</span>
-                </button>
-                <button class="nav-item" onclick="switchScene('regional')" id="nav-regional">
-                    <svg viewBox="0 0 24 24"><path d="M12,3L2,12H5V20H19V12H22L12,3M12,7.7C14.1,7.7 15.8,9.4 15.8,11.5C15.8,14.5 12,18.2 12,18.2C12,18.2 8.2,14.5 8.2,11.5C8.2,9.4 9.9,7.7 12,7.7M12,10A1.5,1.5 0 0,0 10.5,11.5A1.5,1.5 0 0,0 12,13A1.5,1.5 0 0,0 13.5,11.5A1.5,1.5 0 0,0 12,10Z"/></svg>
-                    <span>区域分析</span>
-                </button>
-                <button class="nav-item" onclick="switchScene('industry')" id="nav-industry">
-                    <svg viewBox="0 0 24 24"><path d="M19,3H5C3.89,3 3,3.89 3,5V19C3,20.1 3.89,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.89 20.1,3 19,3M19,19H5V5H19V19M7,7H17V9H7V7M7,11H17V13H7V11M7,15H14V17H7V15Z"/></svg>
-                    <span>行业深度</span>
-                </button>
-                <button class="nav-item" onclick="switchScene('potential')" id="nav-potential">
-                    <svg viewBox="0 0 24 24"><path d="M16,17H5V7H16L20,12L16,17M14,10.5A1.5,1.5 0 1,0 15.5,12A1.5,1.5 0 0,0 14,10.5M5,5H16A2,2 0 0,1 18,6.8L23,12L18,17.2A2,2 0 0,1 16,19H5A2,2 0 0,1 3,17V7A2,2 0 0,1 5,5Z"/></svg>
-                    <span>高潜推荐</span>
-                </button>
-                <button class="nav-item" onclick="switchScene('logs')" id="nav-logs">
-                    <svg viewBox="0 0 24 24"><path d="M12,22A10,10 0 1,1 22,12A10,10 0 0,1 12,22M12,4A8,8 0 1,0 20,12A8,8 0 0,0 12,4M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg>
-                    <span>审计日志</span>
-                </button>
-            </div>
-
-            <div class="user-footer">
-                <div class="user-avatar-btn" title="查看个人中心">👤</div>
-            </div>
-        </nav>
-
-        <!-- 2. 会话历史侧边栏 -->
+        <!-- 1. 会话历史侧边栏 -->
         <aside class="session-sidebar" id="sessionSidebar">
             <div class="session-sidebar-header">
-                <h3 id="sessionSidebarTitle">企业画像</h3>
+                <h3 id="sessionSidebarTitle">历史记录</h3>
                 <button class="new-chat-btn" onclick="startNewConversation()">
                     <svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
-                    新建对话
+                    新建会话
                 </button>
             </div>
             <div class="session-list" id="sessionList">
                 <!-- 历史会话项动态加载 -->
             </div>
+            <!-- 侧边栏底部：页面风格切换 -->
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">
+                    <span class="icon" id="themeIcon">☀️</span>
+                    <span class="text" id="themeText">日间模式</span>
+                </button>
+            </div>
         </aside>
 
-        <!-- 3. 主交互界面 -->
+        <!-- 2. 主交互界面 -->
         <main class="chat-area" id="chatArea">
             <header class="chat-header">
-                <div class="chat-status">
-                    <h2 id="chatHeading">🏢 企业画像分析查询</h2>
-                    <p id="chatSubheading">输入你想研究的客户主体（如“上海电信”），Advanced RAG 引擎将提供画像、痛点及契机分析。</p>
+                <div class="header-left">
+                    <button class="sidebar-toggle-btn" id="sidebarToggle" onclick="toggleSidebar()" title="展开/折叠侧边栏">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                        </svg>
+                    </button>
+                    <div class="chat-status">
+                        <h2 id="chatHeading">客户智能洞察助理</h2>
+                        <p id="chatSubheading">基于智能 RAG 与多场景路由的高级客户分析平台</p>
+                    </div>
                 </div>
                 <div class="chat-user-profile">
                     <span class="username-display" id="usernameDisplay">访客</span>
@@ -1195,15 +1421,79 @@
                 </div>
             </header>
 
-            <!-- 聊天记录容器 -->
-            <section class="messages-container" id="messagesContainer">
-                <!-- 会话消息通过 JS 动态插入 -->
-            </section>
+            <!-- 欢迎界面 (新对话时显示) -->
+            <div class="welcome-container" id="welcomeContainer">
+                <div class="welcome-header">
+                    <div class="welcome-logo">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/>
+                        </svg>
+                    </div>
+                    <h1 class="welcome-title">你好，我是 客户智能洞察助理</h1>
+                    <p class="welcome-subtitle">输入你想研究的客户、区域或行业，我将通过智能 RAG 和多场景意图路由器为您解答。</p>
+                </div>
+                
+                <!-- 建议指令 -->
+                <div class="welcome-suggestions">
+                    <div class="suggestion-card" onclick="useSuggestion('上海电信')">
+                        <div class="suggestion-icon">🏢</div>
+                        <div class="suggestion-text">
+                            <strong>分析企业画像</strong>
+                            <span>输入企业名称如“上海电信”进行多源RAG精准画像分析</span>
+                        </div>
+                    </div>
+                    <div class="suggestion-card" onclick="useSuggestion('生成静安区的区域经济报告')">
+                        <div class="suggestion-icon">📊</div>
+                        <div class="suggestion-text">
+                            <strong>生成区域报告</strong>
+                            <span>分析特定行政区的区域经济指标与可视化图表</span>
+                        </div>
+                    </div>
+                    <div class="suggestion-card" onclick="useSuggestion('通信行业研究报告')">
+                        <div class="suggestion-icon">📄</div>
+                        <div class="suggestion-text">
+                            <strong>剖析行业深度</strong>
+                            <span>一键获取指定行业分析及PDF报告</span>
+                        </div>
+                    </div>
+                    <div class="suggestion-card" onclick="useSuggestion('推荐高潜客户')">
+                        <div class="suggestion-icon">🔍</div>
+                        <div class="suggestion-text">
+                            <strong>推荐高潜客户</strong>
+                            <span>智能筛选匹配的潜在企业客户意向名单及导出 Excel 列表</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 欢迎界面输入框占位符 (未开始对话时，输入框在此居中) -->
+                <div id="welcomeInputPlaceholder"></div>
+            </div>
+
+            <!-- 消息气泡容器 (开始对话后显示，占据主体) -->
+            <div class="messages-container" id="messagesContainer" style="display: none;">
+                <!-- 消息气泡动态加载 -->
+            </div>
+
+            <!-- 系统审计日志面板 -->
+            <div class="logs-panel" id="logsPanel" style="display: none;">
+                <div class="logs-header">
+                    <h3>⚙️ 系统实时审计日志</h3>
+                    <button class="logs-refresh-btn" onclick="fetchSystemLogs()">🔄 刷新日志流</button>
+                </div>
+                <div class="logs-console" id="logsConsole">
+                    <!-- 日志输出 -->
+                </div>
+            </div>
 
             <!-- 对话底栏 -->
             <footer class="input-area" id="inputArea">
                 <div class="input-wrapper">
-                    <input type="text" class="chat-input" id="chatInput" placeholder="在此输入想执行的洞察任务..." onkeydown="handleChatKeydown(event)" />
+                    <input type="text" class="chat-input" id="chatInput" placeholder="向 客户智能洞察助理 提问..." onkeydown="handleChatKeydown(event)" />
+                    <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display: none;" title="停止生成">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M6,19H10V5H6V19M14,5V19H18V5H14Z"/>
+                        </svg>
+                    </button>
                     <button class="send-btn" onclick="sendMessage()">
                         <svg viewBox="0 0 24 24">
                             <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/>
@@ -1211,22 +1501,6 @@
                     </button>
                 </div>
             </footer>
-        </main>
-
-        <!-- 4. 独立日志监控面板 (仅在Logs页显示) -->
-        <main class="logs-panel" id="logsPanel" style="display: none;">
-            <div class="logs-header">
-                <div>
-                    <h3>⚙️ 系统运行审计日志 (数据库存储)</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
-                        当前所有事件通过 SQLAlchemy 连接池直接持久化保存在后台库表中。
-                    </p>
-                </div>
-                <button class="logs-refresh-btn" onclick="fetchSystemLogs()">🔄 刷新日志流</button>
-            </div>
-            <div class="logs-console" id="logsConsole">
-                <!-- 日志输出 -->
-            </div>
         </main>
     </div>
 
@@ -1241,43 +1515,52 @@
     <script>
         // 全局状态管理
         let currentUser = null;
-        let activeScene = 'customer'; // 'customer', 'regional', 'industry', 'potential', 'logs'
         let activeConversationId = null;
         let isRegisterMode = false;
+        let showingLogs = false;
+        let activeController = null;
 
-        const sceneDetails = {
-            customer: {
-                title: "企业画像分析",
-                heading: "🏢 企业画像分析查询",
-                subheading: "输入您想研究的客户主体（例如：'上海电信'），系统将整合 Advanced RAG 引擎的本地知识库与时效性重排，输出痛点及商业契机。",
-                placeholder: "输入客户企业名称（如：上海电信、钛度科技）..."
-            },
-            regional: {
-                title: "区域报告经济",
-                heading: "📊 区域经济分析网页报告",
-                subheading: "输入目标行政区名称（例如：'静安区'），系统将从数据库读取指标，在前端使用 ECharts 动态渲染出高颜值的自适应交互式分析网页，支持鼠标悬浮和缩放交互。",
-                placeholder: "输入要分析的区域名称（如：静安区、杨浦区）..."
-            },
-            industry: {
-                title: "行业深度剖析",
-                heading: "📄 行业深度研究 HTML 报告",
-                subheading: "输入行业类型（例如：'通信行业'），系统将结合大模型深度扩写框架，编译输出一份符合 A4 纸张排版比例的标准 HTML 报告，支持一键原生打印及保存为 PDF，并自动推送至群机器人中。",
-                placeholder: "输入要导出的行业领域（如：通信行业、半导体行业）..."
-            },
-            potential: {
-                title: "高潜客户推荐",
-                heading: "🎯 高潜客户意向及线索库",
-                subheading: "输入关键词（如：'电信'、'上海'），系统将筛选后台大客户线索，返回结构化表格，支持 pandas 自动封装为 Excel 文档打包下载。",
-                placeholder: "输入检索线索特征（如：通信、大数据，留空获取全部）..."
-            }
-        };
-
-        // 页面初始化加载
         window.addEventListener('DOMContentLoaded', () => {
+            const isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+            if (isSidebarCollapsed) {
+                document.querySelector('.app-container').classList.add('sidebar-collapsed');
+            }
+            
+            // Check and apply saved theme
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                document.documentElement.classList.add('light-theme');
+                const icon = document.getElementById('themeIcon');
+                const text = document.getElementById('themeText');
+                if (icon) icon.innerText = '🌙';
+                if (text) text.innerText = '夜间模式';
+            }
+            
             checkAuth();
         });
 
-        // ------------------ 1. 用户登录/鉴权逻辑 ------------------
+        function toggleTheme() {
+            const root = document.documentElement;
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            
+            const isLight = root.classList.toggle('light-theme');
+            if (isLight) {
+                if (icon) icon.innerText = '🌙';
+                if (text) text.innerText = '夜间模式';
+                localStorage.setItem('theme', 'light');
+            } else {
+                if (icon) icon.innerText = '☀️';
+                if (text) text.innerText = '日间模式';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        function toggleSidebar() {
+            const container = document.querySelector('.app-container');
+            const collapsed = container.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('sidebar_collapsed', collapsed);
+        }
 
         function checkAuth() {
             const savedUser = localStorage.getItem('insight_agent_user');
@@ -1285,7 +1568,7 @@
                 currentUser = JSON.parse(savedUser);
                 document.getElementById('authModal').classList.add('hidden');
                 document.getElementById('usernameDisplay').innerText = currentUser.username;
-                switchScene('customer');
+                fetchConversations();
             } else {
                 document.getElementById('authModal').classList.remove('hidden');
             }
@@ -1331,12 +1614,12 @@
                 document.getElementById('authModal').classList.add('hidden');
                 document.getElementById('usernameDisplay').innerText = currentUser.username;
                 
-                // 清空输入框并切换到主页
+                // 清空输入框并获取历史
                 document.getElementById('usernameInput').value = "";
                 document.getElementById('passwordInput').value = "";
                 errorEl.innerText = "";
                 
-                switchScene('customer');
+                fetchConversations();
             } catch (err) {
                 errorEl.innerText = "❌ 无法连接到身份验证服务";
             }
@@ -1355,59 +1638,26 @@
             }
         }
 
-        // ------------------ 2. 场景与侧边栏切换 ------------------
-
-        function switchScene(scene) {
-            activeScene = scene;
-            
-            // 更新导航 Tab 激活高亮
-            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-            document.getElementById(`nav-${scene}`).classList.add('active');
-
-            if (scene === 'logs') {
-                // 切换到审计日志面板
-                document.getElementById('sessionSidebar').style.display = 'none';
-                document.getElementById('chatArea').style.display = 'none';
-                document.getElementById('logsPanel').style.display = 'flex';
-                fetchSystemLogs();
-            } else {
-                // 切换到场景对话面板
-                document.getElementById('sessionSidebar').style.display = 'flex';
-                document.getElementById('chatArea').style.display = 'flex';
-                document.getElementById('logsPanel').style.display = 'none';
-
-                // 更新场景文案描述
-                const meta = sceneDetails[scene];
-                document.getElementById('sessionSidebarTitle').innerText = meta.title;
-                document.getElementById('chatHeading').innerText = meta.heading;
-                document.getElementById('chatSubheading').innerText = meta.subheading;
-                document.getElementById('chatInput').placeholder = meta.placeholder;
-
-                // 加载当前场景的历史会话列表
-                fetchConversations();
-            }
-        }
-
-        // ------------------ 3. 会话与消息历史逻辑 ------------------
+        // ------------------ 2. 会话历史列表获取 ------------------
 
         async function fetchConversations() {
             const listEl = document.getElementById('sessionList');
             listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;">正在载入历史...</div>';
 
             try {
-                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=${activeScene}`);
+                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=all`);
                 const data = await response.json();
                 
                 listEl.innerHTML = '';
                 if (data.length === 0) {
-                    listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;line-height:1.5;">暂无历史对话<br/>点击上方按钮新建</div>';
+                    listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;line-height:1.5;">暂无历史对话<br/>输入新消息开始</div>';
                     activeConversationId = null;
                     clearChat();
-                    showWelcomeMessage();
+                    updateUIState(false);
                     return;
                 }
 
-                data.forEach((conv, index) => {
+                data.forEach(conv => {
                     const item = document.createElement('div');
                     item.className = 'session-item';
                     item.id = `conv-${conv.id}`;
@@ -1425,7 +1675,14 @@
                     listEl.appendChild(item);
                 });
 
-                // 默认选择第一个会话
+                // 默认选择历史记录中的第一个会话，如果activeConversationId仍然有效则继续保留它
+                if (activeConversationId) {
+                    const exists = data.some(c => c.id === activeConversationId);
+                    if (exists) {
+                        selectConversation(activeConversationId);
+                        return;
+                    }
+                }
                 selectConversation(data[0].id);
 
             } catch (err) {
@@ -1434,8 +1691,11 @@
         }
 
         async function startNewConversation(optionalTitle = "新对话") {
+            if (showingLogs) {
+                toggleLogsView();
+            }
             try {
-                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=${activeScene}&title=${encodeURIComponent(optionalTitle)}`, {
+                const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=all&title=${encodeURIComponent(optionalTitle)}`, {
                     method: 'POST'
                 });
                 const data = await response.json();
@@ -1449,6 +1709,9 @@
         }
 
         async function selectConversation(id) {
+            if (showingLogs) {
+                toggleLogsView();
+            }
             activeConversationId = id;
             document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
             
@@ -1463,8 +1726,9 @@
                 const messages = await response.json();
                 
                 if (messages.length === 0) {
-                    showWelcomeMessage();
+                    updateUIState(false);
                 } else {
+                    updateUIState(true);
                     messages.forEach(msg => {
                         if (msg.role === 'user') {
                             appendUserBubble(msg.content);
@@ -1475,7 +1739,8 @@
                 }
                 scrollToBottom();
             } catch (err) {
-                appendBotBubble("❌ <b>获取历史聊天记录失败</b>，请点击刷新或重试。");
+                updateUIState(true);
+                appendBotBubble("❌ <b>获取历史聊天记录失败</b>，请重试。");
             }
         }
 
@@ -1498,31 +1763,25 @@
             document.getElementById('messagesContainer').innerHTML = '';
         }
 
-        function showWelcomeMessage() {
-            const container = document.getElementById('messagesContainer');
-            const row = document.createElement('div');
-            row.className = 'message-row bot';
+        function updateUIState(hasMessages) {
+            const welcome = document.getElementById('welcomeContainer');
+            const messages = document.getElementById('messagesContainer');
+            const inputPlaceholder = document.getElementById('welcomeInputPlaceholder');
+            const inputArea = document.getElementById('inputArea');
+            const chatArea = document.getElementById('chatArea');
             
-            const avatar = document.createElement('div');
-            avatar.className = 'avatar';
-            avatar.innerHTML = '🤖';
-
-            const bubble = document.createElement('div');
-            bubble.className = 'bubble bubble-md';
-
-            const meta = sceneDetails[activeScene];
-            bubble.innerHTML = `
-                你好！我是您的<b>AI 客户洞察助理</b>。<br/><br/>
-                当前已进入 <b>【${meta.title}】</b> 专属操作场景板块。
-                你可以根据界面下方的引导向我输入查询信息。
-            `;
-
-            row.appendChild(avatar);
-            row.appendChild(bubble);
-            container.appendChild(row);
+            if (!hasMessages) {
+                welcome.style.display = 'flex';
+                messages.style.display = 'none';
+                inputPlaceholder.appendChild(inputArea);
+            } else {
+                welcome.style.display = 'none';
+                messages.style.display = 'flex';
+                chatArea.appendChild(inputArea);
+            }
         }
 
-        // ------------------ 4. 实时聊天对话逻辑 ------------------
+        // ------------------ 3. 实时聊天对话逻辑 ------------------
 
         function handleChatKeydown(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -1531,14 +1790,42 @@
             }
         }
 
+        function stopGeneration() {
+            if (activeController) {
+                activeController.abort();
+                activeController = null;
+            }
+            document.getElementById('stopBtn').style.display = 'none';
+        }
+
         async function sendMessage() {
             const inputEl = document.getElementById('chatInput');
             const text = inputEl.value.trim();
             if (!text) return;
 
-            // 1. 如果当前没有活跃会话，先自动创建会话
+            if (showingLogs) {
+                toggleLogsView();
+            }
+
+            // 如果当前没有活跃会话，先自动创建会话
             if (!activeConversationId) {
-                await startNewConversation(text.substring(0, 12) + "...");
+                try {
+                    const optionalTitle = text.substring(0, 12) + "...";
+                    const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=all&title=${encodeURIComponent(optionalTitle)}`, {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        activeConversationId = data.id;
+                        await fetchConversations();
+                    } else {
+                        alert("新建会话失败");
+                        return;
+                    }
+                } catch (err) {
+                    alert("新建会话失败，请检查网络");
+                    return;
+                }
             }
 
             // 更新会话标题为首次提问
@@ -1548,6 +1835,7 @@
             }
 
             inputEl.value = '';
+            updateUIState(true);
             appendUserBubble(text);
             scrollToBottom();
 
@@ -1555,32 +1843,188 @@
             const loadingId = appendLoading();
             scrollToBottom();
 
+            let bubbleEl = null;
+            activeController = new AbortController();
+            document.getElementById('stopBtn').style.display = 'flex';
+
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: text,
-                        scene: activeScene,
+                        scene: 'all',
                         conversation_id: activeConversationId,
                         user_id: currentUser.id
-                    })
+                    }),
+                    signal: activeController.signal
                 });
 
-                const data = await response.json();
-                removeLoading(loadingId);
-
                 if (!response.ok) {
+                    removeLoading(loadingId);
+                    const data = await response.json().catch(() => ({}));
                     appendBotBubble(`❌ <b>后端处理错误</b>：${data.detail || '服务未正常响应。'}`);
-                } else {
-                    appendBotBubble(data.content, data.data_payload);
+                    scrollToBottom();
+                    return;
+                }
+
+                // 处理 SSE 流式返回
+                removeLoading(loadingId);
+                bubbleEl = createBotBubblePlaceholder();
+                scrollToBottom();
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+                let accumulatedText = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // 按行分割 buffer
+                    let lines = buffer.split('\n');
+                    // 保留最后一行（可能不完整）在 buffer 中
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+
+                        if (trimmed.startsWith('data: ')) {
+                            const dataStr = trimmed.substring(6);
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                if (parsed.type === 'info') {
+                                    const scene = parsed.resolved_scene;
+                                    if (scene === 'industry') {
+                                        bubbleEl.innerHTML = `
+                                            <div class="report-generating">
+                                                <div class="generating-header">
+                                                    <span class="generating-icon">📊</span>
+                                                    <strong>正在为您深度编译行业分析报告...</strong>
+                                                </div>
+                                                <div class="generating-progress-bar">
+                                                    <div class="generating-progress-fill"></div>
+                                                </div>
+                                                <div class="generating-steps">
+                                                    <div class="generating-step active" id="step-1">1. 检索政策与新闻数据源 (onenet/shnews/weiban库)...</div>
+                                                    <div class="generating-step" id="step-2">2. 大模型智能总结与前言撰写...</div>
+                                                    <div class="generating-step" id="step-3">3. 汇编26个战略行业前沿动态...</div>
+                                                    <div class="generating-step" id="step-4">4. 渲染高颜值 HTML 研报并推送 Webhook...</div>
+                                                </div>
+                                            </div>
+                                        `;
+                                        scrollToBottom();
+                                        simulateGeneratingSteps(bubbleEl);
+                                    } else if (scene === 'regional') {
+                                        bubbleEl.innerHTML = `
+                                            <div class="report-generating">
+                                                <div class="generating-header">
+                                                    <span class="generating-icon">📈</span>
+                                                    <strong>正在生成区域经济分析报告...</strong>
+                                                </div>
+                                                <div class="generating-progress-bar">
+                                                    <div class="generating-progress-fill"></div>
+                                                </div>
+                                                <div class="generating-steps">
+                                                    <div class="generating-step active" id="step-1">1. 获取该行政区经济指标数据...</div>
+                                                    <div class="generating-step" id="step-2">2. 进行宏观与微观经济趋势研判...</div>
+                                                    <div class="generating-step" id="step-3">3. 渲染可视化图表与 HTML 报告...</div>
+                                                </div>
+                                            </div>
+                                        `;
+                                        scrollToBottom();
+                                        simulateRegionalSteps(bubbleEl);
+                                    } else if (scene === 'potential') {
+                                        bubbleEl.innerHTML = `
+                                            <div class="report-generating">
+                                                <div class="generating-header">
+                                                    <span class="generating-icon">🔍</span>
+                                                    <strong>正在筛选推荐高潜客户名单...</strong>
+                                                </div>
+                                                <div class="generating-progress-bar">
+                                                    <div class="generating-progress-fill"></div>
+                                                </div>
+                                                <div class="generating-steps">
+                                                    <div class="generating-step active" id="step-1">1. 扫描匹配企业数据库...</div>
+                                                    <div class="generating-step" id="step-2">2. 进行客户匹配度评分与推荐背景分析...</div>
+                                                    <div class="generating-step" id="step-3">3. 编译意图名单表格并生成 Excel 导出文件...</div>
+                                                </div>
+                                            </div>
+                                        `;
+                                        scrollToBottom();
+                                        simulatePotentialSteps(bubbleEl);
+                                    }
+                                } else if (parsed.type === 'content') {
+                                    accumulatedText += parsed.content;
+                                    bubbleEl.innerHTML = marked.parse(accumulatedText);
+                                    scrollToBottom();
+                                } else if (parsed.type === 'payload') {
+                                    renderPayload(bubbleEl, parsed.payload);
+                                    scrollToBottom();
+                                } else if (parsed.type === 'done') {
+                                    bubbleEl.dataset.messageId = parsed.message_id;
+                                    const activeTitleEl = document.getElementById(`title-${activeConversationId}`);
+                                    if (activeTitleEl && activeTitleEl.innerText === "新对话...") {
+                                        activeTitleEl.innerText = text.substring(0, 12);
+                                    }
+                                } else if (parsed.type === 'error') {
+                                    bubbleEl.innerHTML += `<div style="color:#ef4444;margin-top:10px;">❌ <b>流式处理错误</b>：${parsed.message}</div>`;
+                                    scrollToBottom();
+                                }
+                            } catch (e) {
+                                console.error('Error parsing JSON from stream line:', trimmed, e);
+                            }
+                        }
+                    }
+                }
+
+                // 读完了，如果还有剩余 buffer 且满足格式，处理一下
+                if (buffer.trim()) {
+                    const trimmed = buffer.trim();
+                    if (trimmed.startsWith('data: ')) {
+                        const dataStr = trimmed.substring(6);
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.type === 'content') {
+                                accumulatedText += parsed.content;
+                                bubbleEl.innerHTML = marked.parse(accumulatedText);
+                            } else if (parsed.type === 'payload') {
+                                renderPayload(bubbleEl, parsed.payload);
+                            } else if (parsed.type === 'error') {
+                                bubbleEl.innerHTML += `<div style="color:#ef4444;margin-top:10px;">❌ <b>流式处理错误</b>：${parsed.message}</div>`;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing trailing JSON:', trimmed, e);
+                        }
+                    }
                 }
 
             } catch (err) {
                 removeLoading(loadingId);
-                appendBotBubble(`❌ <b>连接失败</b>：后端服务异常或响应超时。`);
+                if (err.name === 'AbortError') {
+                    if (bubbleEl) {
+                        bubbleEl.innerHTML += `<div style="color:var(--text-secondary);font-size:12.5px;margin-top:10px;font-style:italic;">⏹️ 已由用户停止生成。</div>`;
+                    } else {
+                        appendBotBubble(`⏹️ 已由用户停止生成。`);
+                    }
+                } else {
+                    appendBotBubble(`❌ <b>连接失败</b>：后端服务异常或响应超时。`);
+                }
+                scrollToBottom();
+            } finally {
+                activeController = null;
+                document.getElementById('stopBtn').style.display = 'none';
             }
-            scrollToBottom();
+        }
+
+        function useSuggestion(text) {
+            const inputEl = document.getElementById('chatInput');
+            inputEl.value = text;
+            sendMessage();
         }
 
         function appendUserBubble(content) {
@@ -1601,7 +2045,7 @@
             container.appendChild(row);
         }
 
-        function appendBotBubble(text, payload = null) {
+        function createBotBubblePlaceholder() {
             const container = document.getElementById('messagesContainer');
             const row = document.createElement('div');
             row.className = 'message-row bot';
@@ -1612,113 +2056,125 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'bubble bubble-md';
+            bubble.innerHTML = '';
+
+            row.appendChild(avatar);
+            row.appendChild(bubble);
+            container.appendChild(row);
+            return bubble;
+        }
+
+        function appendBotBubble(text, payload = null) {
+            const bubble = createBotBubblePlaceholder();
             bubble.innerHTML = marked.parse(text);
-
-            // 根据数据负载在气泡内渲染多模态卡片
             if (payload) {
-                if (payload.type === 'image_link') {
-                    const card = document.createElement('div');
-                    card.className = 'card-img-container';
-                    card.onclick = () => openOverlay(payload.url);
-                    card.innerHTML = `
-                        <img src="${payload.url}" alt="分析长图" />
-                        <div class="card-img-overlay">
-                            <span>🔍 点击查看高清分析长图报告</span>
-                            <span>PNG</span>
-                        </div>
-                    `;
-                    bubble.appendChild(card);
-                } 
-                else if (payload.type === 'html_link') {
-                    const card = document.createElement('div');
-                    card.className = 'card-file';
-                    card.style.borderColor = 'var(--accent-primary)';
-                    card.innerHTML = `
-                        <div class="file-icon" style="background:rgba(59, 130, 246, 0.15);color:#60a5fa;">📊</div>
-                        <div class="file-details">
-                            <span class="file-name">${payload.region_name} 经济运行分析报告</span>
-                            <span class="file-meta"><span>交互式 HTML 网页</span> | <span>包含数据与可视化图表</span></span>
-                        </div>
-                        <a href="${payload.url}" target="_blank" class="download-btn" style="background:var(--accent-gradient)">打开网页</a>
-                    `;
-                    bubble.appendChild(card);
-                } 
-                else if (payload.type === 'file_link') {
-                    const card = document.createElement('div');
-                    card.className = 'card-file';
-                    const badge = payload.webhook_pushed 
-                        ? `<span class="webhook-badge">✓ 已推送至群聊天机器人</span>`
-                        : `<span class="webhook-badge" style="background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.25);color:#f87171">✗ Webhook群推送未开启</span>`;
-                    
-                    const isHtml = payload.file_type === 'html' || payload.url.endsWith('.html');
-                    const fileIcon = isHtml ? '🌐' : '📕';
-                    const fileDesc = isHtml ? '<span>HTML 报告网页</span> | <span>支持打印为 A4 PDF</span>' : '<span>PDF 报告文档</span> | <span>A4 标准尺寸</span>';
-                    const btnText = isHtml ? '浏览报告' : '下载报告';
-                    const downloadAttr = isHtml ? '' : 'download';
-                    const targetAttr = isHtml ? 'target="_blank"' : '';
-                    
-                    card.innerHTML = `
-                        <div class="file-icon" style="${isHtml ? 'background:rgba(59, 130, 246, 0.15);color:#60a5fa;' : ''}">${fileIcon}</div>
-                        <div class="file-details">
-                            <span class="file-name">${payload.title}</span>
-                            <span class="file-meta">${fileDesc}</span>
-                            ${badge}
-                        </div>
-                        <a href="${payload.url}" ${downloadAttr} ${targetAttr} class="download-btn">${btnText}</a>
-                    `;
-                    bubble.appendChild(card);
-                } 
-                else if (payload.type === 'table') {
-                    const card = document.createElement('div');
-                    card.className = 'table-container';
-                    
-                    let trs = '';
-                    payload.data.forEach(item => {
-                        trs += `
-                            <tr>
-                                <td><a href="${item.link}" target="_blank" class="table-link">${item.name}</a></td>
-                                <td>${item.industry}</td>
-                                <td>${item.scale}</td>
-                                <td><span class="score-pill">${item.score}分</span></td>
-                                <td title="${item.reason}">${item.reason.substring(0, 14)}...</td>
-                                <td>${item.contact}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    card.innerHTML = `
-                        <table class="custom-table">
-                            <thead>
-                                <tr>
-                                    <th>企业名称</th>
-                                    <th>行业</th>
-                                    <th>规模</th>
-                                    <th>匹配分</th>
-                                    <th>推荐背景</th>
-                                    <th>联系人</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${trs}
-                            </tbody>
-                        </table>
-                    `;
-                    bubble.appendChild(card);
+                renderPayload(bubble, payload);
+            }
+        }
 
-                    // 导出 Excel 链接
-                    if (payload.excel_url) {
-                        const excelRow = document.createElement('div');
-                        excelRow.className = 'table-action-row';
-                        excelRow.innerHTML = `
-                            <a href="${payload.excel_url}" download class="excel-btn">
-                                <svg style="width:14px;height:14px;fill:#34d399" viewBox="0 0 24 24">
-                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,8H14L20,14V20A2,2 0 0,0 18,22H6A2,2 0 0,0 4,20V4A2,2 0 0,0 6,2H14M13,3.5L18.5,9H13V3.5M8,11V13H11V11H8M12,11V13H15V11H12M8,14V16H11V14H8M12,14V16H15V14H12M8,17V19H11V17H8M12,17V19H15V17H12Z"/>
-                                </svg>
-                                导出完整的客户意向名单 Excel (.xlsx)
-                            </a>
-                        `;
-                        bubble.appendChild(excelRow);
-                    }
+        function renderPayload(bubble, payload) {
+            if (payload.type === 'image_link') {
+                const card = document.createElement('div');
+                card.className = 'card-img-container';
+                card.onclick = () => openOverlay(payload.url);
+                card.innerHTML = `
+                    <img src="${payload.url}" alt="分析长图" />
+                    <div class="card-img-overlay">
+                        <span>🔍 点击查看高清分析长图报告</span>
+                        <span>PNG</span>
+                    </div>
+                `;
+                bubble.appendChild(card);
+            } 
+            else if (payload.type === 'html_link') {
+                const card = document.createElement('div');
+                card.className = 'card-file';
+                card.style.borderColor = 'var(--accent-primary)';
+                card.innerHTML = `
+                    <div class="file-icon" style="background:rgba(59, 130, 246, 0.15);color:#60a5fa;">📊</div>
+                    <div class="file-details">
+                        <span class="file-name">${payload.region_name} 经济运行分析报告</span>
+                        <span class="file-meta"><span>交互式 HTML 网页</span> | <span>包含数据与可视化图表</span></span>
+                    </div>
+                    <a href="${payload.url}" target="_blank" class="download-btn" style="background:var(--accent-gradient)">打开网页</a>
+                `;
+                bubble.appendChild(card);
+            } 
+            else if (payload.type === 'file_link') {
+                const card = document.createElement('div');
+                card.className = 'card-file';
+                
+                const isHtml = payload.file_type === 'html' || payload.url.endsWith('.html');
+                const fileIcon = isHtml ? '🌐' : '📕';
+                const fileDesc = isHtml ? '<span>HTML 报告网页</span> | <span>支持打印为 A4 PDF</span>' : '<span>PDF 报告文档</span> | <span>A4 标准尺寸</span>';
+                
+                let actionBtnHtml = '';
+                if (isHtml) {
+                    actionBtnHtml = `<a href="${payload.url}" target="_blank" class="download-btn">浏览报告</a>`;
+                } else {
+                    actionBtnHtml = `<a href="${payload.url}" download class="download-btn">下载报告</a>`;
+                }
+                
+                card.innerHTML = `
+                    <div class="file-icon" style="${isHtml ? 'background:rgba(59, 130, 246, 0.15);color:#60a5fa;' : ''}">${fileIcon}</div>
+                    <div class="file-details">
+                        <span class="file-name">${payload.title}</span>
+                        <span class="file-meta">${fileDesc}</span>
+                    </div>
+                    ${actionBtnHtml}
+                `;
+                bubble.appendChild(card);
+            } 
+            else if (payload.type === 'table') {
+                const card = document.createElement('div');
+                card.className = 'table-container';
+                
+                let trs = '';
+                payload.data.forEach(item => {
+                    trs += `
+                        <tr>
+                            <td><a href="${item.link}" target="_blank" class="table-link">${item.name}</a></td>
+                            <td>${item.industry}</td>
+                            <td>${item.scale}</td>
+                            <td><span class="score-pill">${item.score}分</span></td>
+                            <td title="${item.reason}">${item.reason.substring(0, 14)}...</td>
+                            <td>${item.contact}</td>
+                        </tr>
+                    `;
+                });
+                
+                card.innerHTML = `
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>企业名称</th>
+                                <th>行业</th>
+                                <th>规模</th>
+                                <th>匹配分</th>
+                                <th>推荐背景</th>
+                                <th>联系人</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${trs}
+                        </tbody>
+                    </table>
+                `;
+                bubble.appendChild(card);
+
+                // 导出 Excel 链接
+                if (payload.excel_url) {
+                    const excelRow = document.createElement('div');
+                    excelRow.className = 'table-action-row';
+                    excelRow.innerHTML = `
+                        <a href="${payload.excel_url}" download class="excel-btn">
+                            <svg style="width:14px;height:14px;fill:#34d399" viewBox="0 0 24 24">
+                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,8H14L20,14V20A2,2 0 0,0 18,22H6A2,2 0 0,0 4,20V4A2,2 0 0,0 6,2H14M13,3.5L18.5,9H13V3.5M8,11V13H11V11H8M12,11V13H15V11H12M8,14V16H11V14H8M12,14V16H15V14H12M8,17V19H11V17H8M12,17V19H15V17H12Z"/>
+                            </svg>
+                            导出完整的客户意向名单 Excel (.xlsx)
+                        </a>
+                    `;
+                    bubble.appendChild(excelRow);
                 }
             }
 
@@ -1764,7 +2220,36 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        // ------------------ 5. 审计日志查询展示 ------------------
+        // ------------------ 4. 审计日志页面切换与展示 ------------------
+
+        function toggleLogsView() {
+            showingLogs = !showingLogs;
+            const logsBtn = document.getElementById('logsToggleBtn');
+            const logsPanel = document.getElementById('logsPanel');
+            const welcome = document.getElementById('welcomeContainer');
+            const messages = document.getElementById('messagesContainer');
+            const inputArea = document.getElementById('inputArea');
+
+            if (showingLogs) {
+                logsBtn.classList.add('active');
+                logsPanel.style.display = 'flex';
+                welcome.style.display = 'none';
+                messages.style.display = 'none';
+                inputArea.style.display = 'none';
+                fetchSystemLogs();
+            } else {
+                logsBtn.classList.remove('active');
+                logsPanel.style.display = 'none';
+                inputArea.style.display = 'block';
+                // 恢复之前的对话视图
+                if (activeConversationId) {
+                    const hasMessages = messages.children.length > 0;
+                    updateUIState(hasMessages);
+                } else {
+                    updateUIState(false);
+                }
+            }
+        }
 
         async function fetchSystemLogs() {
             const consoleEl = document.getElementById('logsConsole');
@@ -1805,7 +2290,7 @@
             }
         }
 
-        // ------------------ 6. 多媒体大图层弹窗 ------------------
+        // ------------------ 5. 多媒体大图层弹窗 ------------------
 
         function openOverlay(src) {
             const overlay = document.getElementById('imageOverlay');
@@ -1819,6 +2304,175 @@
             const overlayImg = document.getElementById('overlayImg');
             overlay.classList.remove('active');
             overlayImg.src = '';
+        }
+
+        // ------------------ 6. 报告生成中步骤与进度条模拟 ------------------
+
+        function simulateGeneratingSteps(bubbleEl) {
+            const progressBar = bubbleEl.querySelector('.generating-progress-fill');
+            const step1 = bubbleEl.querySelector('#step-1');
+            const step2 = bubbleEl.querySelector('#step-2');
+            const step3 = bubbleEl.querySelector('#step-3');
+            const step4 = bubbleEl.querySelector('#step-4');
+
+            if (!progressBar) return;
+
+            // Step 1: 0% -> 25% (1.5s)
+            progressBar.style.width = '25%';
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step1) {
+                    step1.classList.remove('active');
+                    step1.classList.add('done');
+                }
+                if (step2) step2.classList.add('active');
+                progressBar.style.width = '50%';
+            }, 2500);
+
+            // Step 2: 50% -> 75% (5s)
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step2) {
+                    step2.classList.remove('active');
+                    step2.classList.add('done');
+                }
+                if (step3) step3.classList.add('active');
+                progressBar.style.width = '75%';
+            }, 5500);
+
+            // Step 3: 75% -> 90% (8s)
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step3) {
+                    step3.classList.remove('active');
+                    step3.classList.add('done');
+                }
+                if (step4) step4.classList.add('active');
+                progressBar.style.width = '90%';
+            }, 8500);
+        }
+
+        function simulateRegionalSteps(bubbleEl) {
+            const progressBar = bubbleEl.querySelector('.generating-progress-fill');
+            const step1 = bubbleEl.querySelector('#step-1');
+            const step2 = bubbleEl.querySelector('#step-2');
+            const step3 = bubbleEl.querySelector('#step-3');
+
+            if (!progressBar) return;
+
+            progressBar.style.width = '33%';
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step1) {
+                    step1.classList.remove('active');
+                    step1.classList.add('done');
+                }
+                if (step2) step2.classList.add('active');
+                progressBar.style.width = '66%';
+            }, 2000);
+
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step2) {
+                    step2.classList.remove('active');
+                    step2.classList.add('done');
+                }
+                if (step3) step3.classList.add('active');
+                progressBar.style.width = '90%';
+            }, 4500);
+        }
+
+        function simulatePotentialSteps(bubbleEl) {
+            const progressBar = bubbleEl.querySelector('.generating-progress-fill');
+            const step1 = bubbleEl.querySelector('#step-1');
+            const step2 = bubbleEl.querySelector('#step-2');
+            const step3 = bubbleEl.querySelector('#step-3');
+
+            if (!progressBar) return;
+
+            progressBar.style.width = '33%';
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step1) {
+                    step1.classList.remove('active');
+                    step1.classList.add('done');
+                }
+                if (step2) step2.classList.add('active');
+                progressBar.style.width = '66%';
+            }, 1500);
+
+            setTimeout(() => {
+                if (!progressBar.isConnected) return;
+                if (step2) {
+                    step2.classList.remove('active');
+                    step2.classList.add('done');
+                }
+                if (step3) step3.classList.add('active');
+                progressBar.style.width = '90%';
+            }, 3000);
+        }
+
+        async function saveHtmlAsPDF(btnEl, url, title) {
+            if (btnEl.classList.contains('loading')) return;
+            
+            btnEl.classList.add('loading');
+            btnEl.style.opacity = '0.7';
+            btnEl.style.pointerEvents = 'none';
+            const originalText = btnEl.innerText;
+            btnEl.innerText = '⏳ 正在生成...';
+            
+            try {
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.left = '-9999px';
+                iframe.style.top = '0';
+                iframe.style.width = '1024px';
+                iframe.style.height = '1024px';
+                iframe.style.border = 'none';
+                iframe.src = url;
+                
+                document.body.appendChild(iframe);
+                
+                await new Promise((resolve, reject) => {
+                    let timeoutId = setTimeout(() => {
+                        reject(new Error('PDF 生成超时'));
+                    }, 25000);
+
+                    iframe.onload = function() {
+                        setTimeout(() => {
+                            try {
+                                if (iframe.contentWindow && iframe.contentWindow.downloadPDF) {
+                                    iframe.contentWindow.downloadPDF();
+                                    clearTimeout(timeoutId);
+                                    resolve();
+                                } else {
+                                    clearTimeout(timeoutId);
+                                    reject(new Error('未找到 downloadPDF 函数'));
+                                }
+                            } catch (e) {
+                                clearTimeout(timeoutId);
+                                reject(e);
+                            }
+                        }, 1000);
+                    };
+                });
+                
+                setTimeout(() => {
+                    if (iframe && iframe.parentNode) {
+                        iframe.remove();
+                    }
+                }, 10000);
+                
+            } catch (err) {
+                console.error('Failed to generate PDF:', err);
+                alert('PDF 生成失败，将为您在新窗口打开报告进行手动保存：' + err.message);
+                window.open(url, '_blank');
+            } finally {
+                btnEl.classList.remove('loading');
+                btnEl.style.opacity = '';
+                btnEl.style.pointerEvents = '';
+                btnEl.innerText = originalText;
+            }
         }
     </script>
 </body>

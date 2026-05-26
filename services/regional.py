@@ -16,7 +16,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
     if not keyword:
         keyword = "静安区"
         
-    # 匹配区域数据
+    # 匹配区域数据 (用作兜底)
     region_data = None
     matched_key = None
     for k, v in REGIONS.items():
@@ -29,9 +29,121 @@ def handle(keyword: str, user_id: int = None) -> dict:
         region_data = REGIONS["静安区"]
         matched_key = "静安区"
         
-    # 记录日志
     db.log_event(user_id, "regional", "INFO", f"开始为区域 '{matched_key}' 生成 ECharts 交互式网页报告。")
     
+    # 提取区域关键字
+    region_keyword = matched_key.replace("区", "")
+    params = {"region": f"%{region_keyword}%"}
+    
+    db_ok = False
+    gdp_val = 0
+    gdp_growth_val = 0.0
+    pie_data = []
+    bar_categories = []
+    potential_scores = []
+    description_text = region_data['description']
+    
+    # 默认模板渲染变量
+    report_title = f"2026年{matched_key}经济运行洞察报告"
+    metric_1_label = "全区生产总值 (GDP)"
+    metric_1_val = f"{region_data['gdp_2025']} 亿元"
+    metric_2_label = "GDP 同比增速"
+    metric_2_val = f"+{region_data['gdp_growth']}%"
+    metric_1_color_class = "blue-text"
+    metric_2_color_class = "green-text"
+    
+    chart_1_title = "核心支柱产业增加值占比"
+    chart_2_title = "重点发展行业成长红利指数"
+    chart_1_formatter = "{b}: {c}%"
+    chart_2_formatter = "{c} 分"
+    
+    try:
+        # 1. 统计企业总数与累计补贴金额
+        summary_sql = "SELECT SUM(`补贴金额万元`) AS total_subsidy, COUNT(DISTINCT `企业名称`) AS ent_count FROM ranking_ent_dtl_clue WHERE `客户区局` LIKE :region"
+        summary_res = db.query_business_db(summary_sql, params)
+        
+        # 2. 统计工商行业分布（饼图）
+        industry_sql = "SELECT `工商行业` AS industry, COUNT(*) AS cnt FROM ranking_ent_dtl_clue WHERE `客户区局` LIKE :region GROUP BY `工商行业` ORDER BY cnt DESC LIMIT 5"
+        industry_res = db.query_business_db(industry_sql, params)
+        
+        # 3. 统计补贴金额 Top 5 的企业（条形图）
+        top_ent_sql = "SELECT `企业名称` AS company, `补贴金额万元` AS subsidy FROM ranking_ent_dtl_clue WHERE `客户区局` LIKE :region AND `补贴金额万元` IS NOT NULL ORDER BY `补贴金额万元` DESC LIMIT 5"
+        top_ent_res = db.query_business_db(top_ent_sql, params)
+        
+        # 4. 统计该行政区域内落地的大型招商项目数量 (zq_dtl_shnews_yyy)
+        news_sql = "SELECT COUNT(*) AS news_count FROM zq_dtl_shnews_yyy WHERE `项目落地地区` LIKE :region OR `内容` LIKE :region"
+        news_res = db.query_business_db(news_sql, params)
+        project_count = news_res[0].get("news_count", 0) if news_res else 0
+        
+        # 5. 统计该行政区相关的政策总数 (地方委办局政策 + 通用政策)
+        weiban_sql = "SELECT COUNT(*) AS policy_count FROM burneau_weiban_policy_dtl WHERE `委办局` LIKE :region OR `政策名称` LIKE :region"
+        weiban_res = db.query_business_db(weiban_sql, params)
+        weiban_count = weiban_res[0].get("policy_count", 0) if weiban_res else 0
+        
+        onenet_sql = "SELECT COUNT(*) AS policy_count FROM zq_dtl_onenet_all WHERE `正文` LIKE :region OR `标题` LIKE :region"
+        onenet_res = db.query_business_db(onenet_sql, params)
+        onenet_count = onenet_res[0].get("policy_count", 0) if onenet_res else 0
+        
+        total_policies = weiban_count + onenet_count
+        
+        if summary_res and summary_res[0].get("ent_count", 0) > 0:
+            gdp_val = int(summary_res[0].get("ent_count") or 0)
+            gdp_growth_val = round(float(summary_res[0].get("total_subsidy") or 0.0), 2)
+            
+            # 填充饼图
+            for row in industry_res:
+                ind = row.get("industry") or "其他"
+                if ind.strip():
+                    pie_data.append({
+                        "name": ind,
+                        "value": int(row.get("cnt") or 0)
+                    })
+                    
+            # 填充条形图 (倒序排列，因为 ECharts 柱状图自下而上画)
+            for row in reversed(top_ent_res):
+                company = row.get("company") or "未知企业"
+                subsidy = round(float(row.get("subsidy") or 0.0), 2)
+                bar_categories.append(company)
+                potential_scores.append(subsidy)
+                
+            # 覆盖模板渲染变量
+            report_title = f"2026年{matched_key}重点企业扶持与政策数据洞察报告"
+            metric_1_label = "全区企业总数 (去重)"
+            metric_1_val = f"{gdp_val} 家"
+            metric_2_label = "累计补贴扶持金额"
+            metric_2_val = f"{gdp_growth_val} 万元"
+            
+            chart_1_title = "支柱产业企业数量分布 Top 5"
+            chart_2_title = "扶持资金 Top 5 标杆企业名录"
+            chart_1_formatter = "{b}: {c}家"
+            chart_2_formatter = "{c} 万元"
+            
+            top_3_companies = [r.get('company') for r in top_ent_res[:3]]
+            description_text = (
+                f"根据本系统实时监测 of MySQL 业务数据分析，当前在 {matched_key} 分配的重点企业去重总计达 **{gdp_val}** 家，"
+                f"全区企业累计已获得各委办局财政扶持与补贴资金总计达 **{gdp_growth_val}** 万元。在产业结构方面，全区以 "
+                f"'{pie_data[0]['name'] if pie_data else '支柱产业'}' 和 '{pie_data[1]['name'] if len(pie_data) > 1 else '高新技术'}' 为主要企业集群。"
+                f"在招商落地与政策红利方面，近期累计在 {matched_key} 落地重大招商签约项目 **{project_count}** 个，"
+                f"发布地方与行业扶持政策达 **{total_policies}** 项（包含委办局政策 **{weiban_count}** 项）。"
+                f"其中，补贴资金排名前列的标杆企业包括 {', '.join(top_3_companies)} 等。建议客户经理以此作为突破口进行业务深耕。"
+            )
+            db_ok = True
+    except Exception as db_err:
+        db.log_event(user_id, "regional", "ERROR", f"从业务库读取区域数据失败: {db_err}")
+        db_ok = False
+        
+    if not db_ok:
+        # 回退至 mock 数据
+        pie_data = []
+        for industry_name, share_val in region_data['industry_gdp_share'].items():
+            pie_data.append({
+                "name": industry_name,
+                "value": share_val
+            })
+        bar_categories = region_data['key_industries']
+        potential_scores = [93, 86, 82, 75, 68][:len(bar_categories)]
+        description_text = region_data['description']
+        
     # 确定保存路径（在 static/generated/ 下）
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     static_dir = os.path.join(base_dir, "static", "generated")
@@ -41,26 +153,12 @@ def handle(keyword: str, user_id: int = None) -> dict:
     html_filepath = os.path.join(static_dir, html_filename)
     html_web_url = f"/static/generated/{html_filename}"
     
-    # 准备 ECharts 数据
-    # 1. 饼图占比数据
-    pie_data = []
-    for industry_name, share_val in region_data['industry_gdp_share'].items():
-        pie_data.append({
-            "name": industry_name,
-            "value": share_val
-        })
-        
-    # 2. 条形图潜力数据
-    bar_categories = region_data['key_industries']
-    # 模拟给不同重点产业打个成长潜力分
-    potential_scores = [93, 86, 82, 75, 68][:len(bar_categories)]
-    
     # 构造 HTML
     html_content = f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>2026年{region_data['name']}经济运行洞察报告</title>
+    <title>{report_title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
@@ -283,34 +381,34 @@ def handle(keyword: str, user_id: int = None) -> dict:
             </button>
         </div>
         <header>
-            <h1>2026年{region_data['name']}经济运行洞察报告</h1>
+            <h1>{report_title}</h1>
             <p class="subtitle">AI 智能分析引擎 & ECharts 交互式可视化看板</p>
         </header>
         <div class="metrics">
             <div class="card">
-                <div class="card-label">全区生产总值 (GDP)</div>
-                <div class="card-value blue-text">{region_data['gdp_2025']} 亿元</div>
+                <div class="card-label">{metric_1_label}</div>
+                <div class="card-value {metric_1_color_class}">{metric_1_val}</div>
             </div>
             <div class="card">
-                <div class="card-label">GDP 同比增速</div>
-                <div class="card-value green-text">+{region_data['gdp_growth']}%</div>
+                <div class="card-label">{metric_2_label}</div>
+                <div class="card-value {metric_2_color_class}">{metric_2_val}</div>
             </div>
         </div>
         
         <div class="charts-grid">
             <div class="chart-card">
-                <h3 class="chart-title">核心支柱产业增加值占比</h3>
+                <h3 class="chart-title">{chart_1_title}</h3>
                 <div id="pie-chart" style="width: 100%; height: 320px;"></div>
             </div>
             <div class="chart-card">
-                <h3 class="chart-title">重点发展行业成长红利指数</h3>
+                <h3 class="chart-title">{chart_2_title}</h3>
                 <div id="bar-chart" style="width: 100%; height: 320px;"></div>
             </div>
         </div>
         
         <div class="insight-section">
             <h3 class="insight-title">💡 区域发展定位与商业合作机会建议</h3>
-            <p class="insight-content">{region_data['description']}</p>
+            <p class="insight-content">{description_text}</p>
         </div>
     </div>
 
@@ -326,7 +424,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             backgroundColor: 'transparent',
             tooltip: {{
                 trigger: 'item',
-                formatter: '{{b}}: {{c}}%'
+                formatter: '{chart_1_formatter}'
             }},
             legend: {{
                 bottom: '0%',
@@ -337,7 +435,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             }},
             series: [
                 {{
-                    name: '产业占比',
+                    name: '分布数量',
                     type: 'pie',
                     radius: ['40%', '65%'],
                     center: ['50%', '42%'],
@@ -356,7 +454,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                             fontSize: '12',
                             fontWeight: 'bold',
                             color: '#f8fafc',
-                            formatter: '{{b}}\\n{{c}}%'
+                            formatter: '{chart_1_formatter}'
                         }}
                     }},
                     labelLine: {{
@@ -398,7 +496,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             }},
             series: [
                 {{
-                    name: '红利指数',
+                    name: '补贴金额',
                     type: 'bar',
                     data: barValues,
                     barWidth: '35%',
@@ -412,7 +510,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     label: {{
                         show: true,
                         position: 'right',
-                        formatter: '{{c}} 分',
+                        formatter: '{chart_2_formatter}',
                         color: '#94a3b8',
                         fontWeight: 'bold',
                         fontSize: 10
@@ -439,7 +537,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
     return {
         "type": "html_link",
         "url": html_web_url,
-        "region_name": region_data['name'],
-        "gdp": f"{region_data['gdp_2025']} 亿元",
-        "gdp_growth": f"+{region_data['gdp_growth']}%"
+        "region_name": matched_key,
+        "gdp": metric_1_val,
+        "gdp_growth": metric_2_val
     }

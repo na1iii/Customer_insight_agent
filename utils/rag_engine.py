@@ -109,6 +109,60 @@ class DocumentChunker:
                     
         return chunks
 
+    @classmethod
+    def split_doc_to_chunks(cls, doc: Dict, chunk_size: int = 220, overlap: int = 50) -> List[Dict]:
+        """
+        将内存中的文档字典（包含 title, content, publish_date 等）切分成小的 Child Chunks，并保留 Parent Content。
+        """
+        metadata = {
+            "title": doc.get("title") or "未知标题",
+            "publish_date": doc.get("publish_date") or datetime.now().strftime("%Y-%m-%d"),
+            "source": doc.get("source") or "关系型数据库",
+            "link": doc.get("link") or "",
+            "company": doc.get("company") or "doc"
+        }
+        full_content = doc.get("content") or ""
+        if not full_content:
+            return []
+            
+        chunks = []
+        # 按换行/段落拆分
+        paragraphs = [p.strip() for p in full_content.split("\n") if p.strip()]
+        
+        chunk_idx = 0
+        current_header = ""
+        for p in paragraphs:
+            if p.startswith("#"):
+                current_header = p.lstrip("#").strip()
+                continue
+                
+            content_with_header = f"[{current_header}] {p}" if current_header else p
+            p_len = len(content_with_header)
+            
+            if p_len <= chunk_size:
+                chunk_idx += 1
+                chunks.append({
+                    "id": f"{metadata.get('company', 'doc')}_chunk_{chunk_idx}",
+                    "content": content_with_header,
+                    "parent_content": full_content,
+                    "metadata": metadata
+                })
+            else:
+                start = 0
+                while start < p_len:
+                    end = start + chunk_size
+                    chunk_text = content_with_header[start:end]
+                    chunk_idx += 1
+                    chunks.append({
+                        "id": f"{metadata.get('company', 'doc')}_chunk_{chunk_idx}",
+                        "content": chunk_text,
+                        "parent_content": full_content,
+                        "metadata": metadata
+                    })
+                    start += (chunk_size - overlap)
+                    
+        return chunks
+
 
 class BM25Retriever:
     """
@@ -210,12 +264,33 @@ class RAGEngine:
     3. 执行时效性得分衰减
     4. 调用大模型重排 (Rerank)
     """
-    def __init__(self, knowledge_dir: str):
+    def __init__(self, knowledge_dir: str = None, documents: List[Dict] = None):
         self.knowledge_dir = knowledge_dir
+        self.documents = documents or []
         self.chunks = []
         self.bm25_retriever = None
         
-        self.load_and_index()
+        if self.knowledge_dir:
+            self.load_and_index()
+        elif self.documents:
+            self.index_in_memory_documents()
+            
+    def index_in_memory_documents(self):
+        """
+        初始化加载：对传入的内存文档列表，构建 BM25 索引。
+        """
+        all_chunks = []
+        for doc in self.documents:
+            # 采用双路切分 (Parent-Child)
+            doc_chunks = DocumentChunker.split_doc_to_chunks(doc, chunk_size=220, overlap=50)
+            all_chunks.extend(doc_chunks)
+            
+        self.chunks = all_chunks
+        print(f"【RAG Engine】内存数据源共加载了 {len(self.chunks)} 条 Child 文本切片。")
+        
+        if self.chunks:
+            # 建立 BM25 索引
+            self.bm25_retriever = BM25Retriever(self.chunks)
         
     def load_and_index(self):
         """
@@ -317,6 +392,9 @@ class RAGEngine:
                 "你是一个高精度的 Rerank 重排评判器。请阅读用户的问题以及给出的检索文档片段，"
                 "客观判断该文档片段对回答用户问题沾不沾边、有多大帮助，并给出一个 0.0 到 1.0 之间的相关性评分。\n"
                 "其中：0.0 代表完全不相关，1.0 代表能完全、直接解答该提问。\n"
+                "【重要判定准则】：\n"
+                "如果用户问题中的查询实体/公司在待评文档中仅仅是作为背景介绍、偶发的提及、创始人的过往实习/工作经历、"
+                "或者纯粹作为外部对比出现，而【不是】该文档片段的核心讨论/论述主体，请务必给其打极低分（低于 0.3，例如 0.0 至 0.2）。\n"
                 "你必须输出且仅输出一个合法的 JSON 对象，格式如下：\n"
                 "{\n"
                 "  \"reranked\": [\n"
