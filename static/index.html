@@ -42,12 +42,120 @@
             opacity: 0.15;
         }
 
+        /* 日间模式（Light Theme）下的场景2与场景4卡片及表格颜色优化 */
+        :root.light-theme .card-file {
+            background: rgba(255, 255, 255, 0.65);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+
+        :root.light-theme .potential-card {
+            background: rgba(255, 255, 255, 0.65);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+
+        :root.light-theme .table-link {
+            color: var(--accent-primary);
+        }
+
+        :root.light-theme .potential-score {
+            background: rgba(217, 119, 6, 0.08);
+            border-color: rgba(217, 119, 6, 0.2);
+            color: #b45309;
+        }
+
+        :root.light-theme .potential-score small {
+            color: #d97706;
+        }
+
+        :root.light-theme .potential-tag {
+            background: rgba(37, 99, 235, 0.07);
+            border-color: rgba(37, 99, 235, 0.18);
+            color: #1d4ed8;
+        }
+
+        :root.light-theme .potential-action {
+            color: #047857;
+        }
+
+        :root.light-theme .generating-step.active {
+            color: var(--accent-primary);
+        }
+
+        :root.light-theme .table-container {
+            background: rgba(255, 255, 255, 0.45);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+
+        :root.light-theme .custom-table th {
+            color: var(--text-primary);
+            background: rgba(0, 0, 0, 0.03);
+            border-bottom-color: rgba(0, 0, 0, 0.08);
+        }
+
+        :root.light-theme .custom-table td {
+            color: var(--text-primary);
+            border-bottom-color: rgba(0, 0, 0, 0.04);
+        }
+
+        :root.light-theme .score-pill {
+            background: rgba(217, 119, 6, 0.08);
+            border-color: rgba(217, 119, 6, 0.25);
+            color: #b45309;
+        }
+
+        :root.light-theme .bubble-md .badge {
+            background: rgba(37, 99, 235, 0.08);
+            border-color: rgba(37, 99, 235, 0.2);
+            color: #1d4ed8;
+        }
+
+        /* 全局日间模式滚动条适配 */
+        :root.light-theme ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        :root.light-theme ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.28);
+        }
+
+        :root.light-theme * {
+            scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
             font-family: 'Outfit', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
             -webkit-font-smoothing: antialiased;
+        }
+
+        /* 全局滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            transition: background 0.2s;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Firefox 支持的全局滚动条样式 */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
         }
 
         body {
@@ -313,14 +421,6 @@
             gap: 8px;
         }
 
-        .session-list::-webkit-scrollbar {
-            width: 4px;
-        }
-        .session-list::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 2px;
-        }
-
         .session-item {
             padding: 12px 14px;
             border-radius: 12px;
@@ -561,12 +661,12 @@
         /* Markdown 内容特定样式 */
         .bubble-md h2, .bubble-md h3 {
             margin-bottom: 12px;
-            color: #ffffff;
+            color: var(--text-primary);
             font-weight: 600;
         }
         .bubble-md h2 {
             font-size: 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid var(--glass-border);
             padding-bottom: 6px;
             margin-top: 6px;
         }
@@ -688,7 +788,7 @@
         .file-name {
             font-weight: 600;
             font-size: 13px;
-            color: #ffffff;
+            color: var(--text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1094,14 +1194,6 @@
             overflow-y: auto;
         }
 
-        .welcome-container::-webkit-scrollbar {
-            width: 4px;
-        }
-        .welcome-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 2px;
-        }
-
         .welcome-header {
             display: flex;
             flex-direction: column;
@@ -1266,7 +1358,7 @@
             gap: 10px;
             margin-bottom: 15px;
             font-size: 14.5px;
-            color: #ffffff;
+            color: var(--text-primary);
         }
 
         .generating-icon {
@@ -1369,7 +1461,7 @@
         }
 
         .potential-name {
-            color: #ffffff;
+            color: var(--text-primary);
             font-size: 15px;
             font-weight: 700;
             line-height: 1.35;
