@@ -8,8 +8,9 @@ import os
 import hashlib
 import uuid
 import json
+from collections import Counter
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text, Index, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # 1. 动态加载连接配置
@@ -78,6 +79,39 @@ class SystemLog(Base):
     details = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class OpportunityArticle(Base):
+    __tablename__ = "opportunity_articles"
+    __table_args__ = (
+        UniqueConstraint("article_uid", "source_type", "ent_name", name="uk_article_source_ent"),
+        Index("idx_opportunity_district_score_time", "district", "score", "release_time"),
+        Index("idx_opportunity_ent_name", "ent_name"),
+        Index("idx_opportunity_release_time", "release_time"),
+        Index("idx_opportunity_is_valid", "is_valid"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    article_uid = Column(String(128), nullable=False)
+    source_type = Column(String(50), nullable=False)
+    source_name = Column(String(255), nullable=True)
+    title = Column(Text, nullable=True)
+    link = Column(Text, nullable=True)
+    release_time = Column(String(50), nullable=True)
+    district = Column(String(50), nullable=True)
+    ent_name = Column(String(255), nullable=False)
+    industry = Column(String(255), nullable=True)
+    abstract = Column(Text, nullable=True)
+    score = Column(Integer, default=0)
+    score_label = Column(String(50), nullable=True)
+    score_class = Column(String(50), nullable=True)
+    display_tags = Column(Text, nullable=True)
+    matched_rules = Column(Text, nullable=True)
+    sources = Column(Text, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    is_valid = Column(Integer, default=1)
+    noise_reason = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # 自动建表与验证
 try:
     # 尝试建表 (在生产/受限环境可能没有 CREATE 权限)
@@ -89,6 +123,14 @@ try:
     # 额外测试表的可访问性
     with engine.connect() as conn:
         conn.execute(text("SELECT 1 FROM users LIMIT 1"))
+        conn.execute(text("SELECT 1 FROM conversations LIMIT 1"))
+        conn.execute(text("SELECT 1 FROM messages LIMIT 1"))
+        conn.execute(text("SELECT 1 FROM logs LIMIT 1"))
+        try:
+            conn.execute(text("SELECT 1 FROM opportunity_articles LIMIT 1"))
+        except Exception:
+            Base.metadata.create_all(bind=engine, tables=[OpportunityArticle.__table__])
+            conn.execute(text("SELECT 1 FROM opportunity_articles LIMIT 1"))
     print("【Database Initialized】数据库表结构验证与初始化成功。")
 except Exception as e:
     print(f"【Database Error】数据库初始化或表验证失败 (表可能不存在，或无读取权限): {e}")
@@ -360,3 +402,760 @@ def query_business_db(sql: str, params: dict = None) -> list:
         print(f"【Database Business Query Error】执行业务 SQL 失败: {e} | SQL: {sql}")
         return []
 
+
+
+# 3. 公众号商机文章分析配置
+
+DISTRICTS = [
+    "浦东新区", "黄浦区", "徐汇区", "长宁区", "静安区", "普陀区", "虹口区", "杨浦区",
+    "闵行区", "宝山区", "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区"
+]
+
+REGION_ALIASES = {
+    "上海徐汇": "徐汇区",
+    "徐汇": "徐汇区",
+    "浦东": "浦东新区",
+}
+
+CATERING_KEYWORDS = [
+    "餐饮", "餐厅", "饭店", "酒店餐饮", "火锅", "烧烤", "咖啡", "奶茶", "茶饮", "糖水", "烘焙",
+    "面包", "甜品", "小吃", "美食", "食品服务", "连锁餐饮", "餐饮服务", "餐饮企业"
+]
+
+SCORING_RULES = [
+    ("投资落地", 25, ["企业投资", "投资落地", "落户", "开工", "投产", "入驻", "设立", "总部落地", "新设", "成立", "扩产"]),
+    ("重大签约", 20, ["企业签约", "签约", "战略合作", "合作协议", "签约仪式", "对接", "达成合作"]),
+    ("领导调研", 15, ["领导走访", "领导", "调研", "考察", "视察", "走访", "座谈", "书记", "区长", "主任"]),
+    ("资本融资", 10, ["企业融资", "融资", "IPO", "上市", "基金", "注资", "增资", "战略投资", "完成融资", "挂牌", "科创板", "港交所", "北交所"]),
+    ("技术突破", 10, ["研发突破", "技术突破", "获奖认证", "首发", "首创", "发布", "研发", "攻克", "创新成果", "首款", "首台", "认证", "获奖", "入选", "荣获", "专精特新", "高新技术企业"]),
+    ("具化数据", 10, ["明确金额", "规模等数据", "金额", "投资额", "融资额", "面积", "产值", "规模", "数量", "亿元", "万元", "平方米", "亩"]),
+    ("会议论坛", 10, ["行业大会", "会议", "论坛", "峰会", "推介会", "发布会", "展会", "博览会", "对接会"]),
+]
+
+EVENT_PRIORITY = ["投资落地", "重大签约", "领导调研", "资本融资", "技术突破", "具化数据", "会议论坛"]
+
+def has_any(text_value: str, keywords: list[str]) -> bool:
+    """判断文本是否命中任一关键词。"""
+    return any(keyword and keyword in text_value for keyword in keywords)
+
+def detect_article_region(row: dict) -> str:
+    """根据文章字段识别上海行政区。"""
+    text_all = "".join([
+        row.get("Scope") or "",
+        row.get("name") or "",
+        row.get("title") or "",
+        row.get("Abstract") or "",
+        row.get("content") or "",
+    ])
+    for alias, district in REGION_ALIASES.items():
+        if alias in text_all:
+            return district
+    for district in DISTRICTS:
+        if district in text_all:
+            return district
+        short_name = district.replace("新区", "").replace("区", "")
+        if short_name and short_name in text_all:
+            return district
+    return ""
+
+def calc_article_opportunity_score(row: dict) -> dict:
+    """计算公众号文章商机分数与采集等级。"""
+    abstract = (row.get("Abstract") or "").strip()
+    content = (row.get("content") or "").strip()
+    title = (row.get("title") or "").strip()
+    scope = (row.get("Scope") or "").strip()
+    ind1 = (row.get("Industry1") or "").strip()
+    ind2 = (row.get("Industry2") or "").strip()
+    ind3 = (row.get("Industry3") or "").strip()
+    topic = (row.get("Topic") or "").strip()
+    tag_ss = (row.get("Tag_SS") or "").strip()
+    tag_ipo = (row.get("Tag_IPO") or "").strip()
+    tag_rz = (row.get("Tag_RZ") or "").strip()
+    ent_nature = (row.get("EnterpriseNature") or "").strip()
+    other_nature = (row.get("OtherNature") or "").strip()
+    ent_name = (row.get("EntName") or "").strip()
+    ent_short = (row.get("EntShortName") or "").strip()
+    region = detect_article_region(row)
+
+    if ent_nature == "非企" or (not ent_name and not ent_short):
+        return {
+            "score": 0,
+            "decision": "否",
+            "level": "不符合采集标准",
+            "type": "",
+            "region": region,
+            "hit": [],
+            "reason": "未涉及具体企业" if not ent_name and not ent_short else "涉及对象为非企业",
+        }
+
+    text_all = "".join([title, abstract, content, scope, topic, ind1, ind2, ind3, ent_nature, other_nature])
+    is_excluded_service_industry = "现代服务业" in text_all or "民生" in text_all or ind1 in ("现代服务业", "民生")
+    is_catering = has_any(text_all, CATERING_KEYWORDS)
+    if is_excluded_service_industry and is_catering:
+        return {
+            "score": 0,
+            "decision": "否",
+            "level": "不符合采集标准",
+            "type": "",
+            "region": region,
+            "hit": ["现代服务业/民生", "餐饮行业"],
+            "reason": "现代服务业或民生行业下的餐饮不展示",
+        }
+
+    score = 0
+    hit = []
+    for rule_name, points, keywords in SCORING_RULES:
+        if has_any(text_all, keywords):
+            score += points
+            hit.append(rule_name)
+
+    if (tag_ss == "是" or tag_ipo == "是") and "资本融资" not in hit:
+        score += 10
+        hit.append("资本融资")
+    if tag_rz and "资本融资" not in hit:
+        score += 10
+        hit.append("资本融资")
+
+    score = min(score, 100)
+    hit = list(dict.fromkeys(hit))
+    event_type = ""
+    for event_name in EVENT_PRIORITY:
+        if event_name in hit:
+            event_type = event_name
+            break
+
+    if score >= 55:
+        decision = "是"
+        level = "推荐采集"
+        reason = ""
+    elif score >= 30:
+        decision = "是"
+        level = "建议采集"
+        reason = ""
+    else:
+        decision = "否"
+        level = "不符合采集标准"
+        reason = "未命中足够的入选逻辑或评分维度"
+
+    return {
+        "score": score,
+        "decision": decision,
+        "level": level,
+        "type": event_type,
+        "region": region,
+        "hit": hit,
+        "reason": reason,
+    }
+
+def extract_article_display_tags(row: dict) -> list[str]:
+    """提取前端展示用结构化标签。"""
+    tags = []
+    news_tag = (row.get("news_tag") or row.get("NewsTag") or "").strip()
+    if news_tag and news_tag != "其他":
+        tags.append(news_tag)
+
+    topic = (row.get("Topic") or "").strip()
+    tag_ss = (row.get("Tag_SS") or "").strip()
+    tag_ipo = (row.get("Tag_IPO") or "").strip()
+    tag_rz = (row.get("Tag_RZ") or "").strip()
+    tag_sg = (row.get("Tag_SG") or "").strip()
+
+    if topic == "上市" and tag_ss == "是":
+        tags.append("上市")
+    elif topic == "IPO" and tag_ipo == "是":
+        tags.append("IPO")
+    elif topic == "融资" and tag_rz:
+        tags.append(tag_rz)
+    elif topic == "收购" and tag_sg:
+        tags.append(tag_sg)
+
+    capital_nature = (row.get("CapitalNature") or "").strip()
+    if capital_nature:
+        tags.append(capital_nature)
+
+    other_nature = (row.get("OtherNature") or "").strip()
+    if other_nature:
+        tags.append(other_nature)
+
+    return list(dict.fromkeys(tags))
+
+def score_to_display(score: int, level: str) -> tuple[str, str]:
+    """将采集优先级映射为前端显示标签和 CSS class。"""
+    if level == "推荐采集" or score >= 55:
+        return "HOT", "score-red"
+    if level == "建议采集" or score >= 30:
+        return "关注", "score-blue"
+    return "不采集", "score-gray"
+
+def format_release_time(raw_time: str) -> str:
+    """将发布时间格式化为前端展示文本。"""
+    if not raw_time or not str(raw_time).strip():
+        return ""
+    raw_time = str(raw_time).strip()
+    for time_format in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(raw_time, time_format)
+            return f"{dt.month}月{dt.day}日"
+        except ValueError:
+            continue
+    return raw_time
+
+def get_today_display() -> str:
+    """获取当前日期的中文展示。"""
+    now = datetime.now()
+    weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    return now.strftime(f"%Y年%m月%d日 · {weekdays[now.weekday()]}")
+
+def parse_json_list(value) -> list:
+    """安全解析数据库中的 JSON 数组字段。"""
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+def fetch_article_rows(limit: int = 500, district: str = None) -> list[dict]:
+    """
+    读取基础新闻表，并在内存中与 ranking_ent_dtl_clue 进行实体链接，
+    返回适配旧版业务逻辑的行格式（字典）。
+    """
+    ent_sql = text("""
+        SELECT `企业名称`, `企业简称`, `工商行业`, `客户区局`, `资质名称`
+        FROM ranking_ent_dtl_clue
+        WHERE `企业名称` IS NOT NULL AND `企业名称` != ''
+    """)
+    
+    district_short = (district or "").replace("新区", "").replace("区", "")
+    district_patterns = []
+    if district:
+        district_patterns.append(f"%{district}%")
+        if district_short and district_short != district:
+            district_patterns.append(f"%{district_short}%")
+
+    wx_where = "w.title IS NOT NULL AND w.title != ''"
+    sh_where = "`标题` IS NOT NULL AND `标题` != ''"
+    query_params = {"limit": limit}
+    if district_patterns:
+        pattern_parts = []
+        for i, pattern in enumerate(district_patterns):
+            key = f"district_pattern_{i}"
+            query_params[key] = pattern
+            pattern_parts.append(f"w.title LIKE :{key} OR w.content LIKE :{key} OR w.name LIKE :{key}")
+        wx_where += " AND (" + " OR ".join(pattern_parts) + ")"
+
+        sh_pattern_parts = []
+        for i in range(len(district_patterns)):
+            key = f"district_pattern_{i}"
+            sh_pattern_parts.append(f"`项目落地地区` LIKE :{key} OR `标题` LIKE :{key} OR `内容` LIKE :{key} OR `来源` LIKE :{key}")
+        sh_where += " AND (" + " OR ".join(sh_pattern_parts) + ")"
+
+    wx_sql = text(f"""
+        SELECT w.name, w.title, w.content, w.release_time, w.link, 'wechat' as source_type, '' as sh_region, p.Abstract
+        FROM weixin_article_dtl_unique w
+        LEFT JOIN wechat_article_ai_parse p ON w.title = p.title
+        WHERE {wx_where}
+        ORDER BY w.release_time DESC LIMIT :limit
+    """)
+    sh_sql = text(f"""
+        SELECT 
+            `来源` AS name,
+            `标题` AS title,
+            `内容` AS content,
+            `发布日期` AS release_time,
+            `URL` AS link,
+            'shnews' AS source_type,
+            `项目落地地区` AS sh_region,
+            '' AS Abstract
+        FROM zq_dtl_shnews_yyy
+        WHERE {sh_where}
+        ORDER BY `发布日期` DESC LIMIT :limit
+    """)
+    
+    with engine.connect() as conn:
+        ent_rows = conn.execute(ent_sql).mappings().all()
+        ent_dict = {}
+        for r in ent_rows:
+            name = (r.get("企业名称") or "").strip()
+            short = (r.get("企业简称") or "").strip()
+            val = {"full": name, "short": short, "ind": r.get("工商行业"), "dist": r.get("客户区局"), "qual": r.get("资质名称")}
+            if name:
+                ent_dict[name] = val
+            if short and len(short) > 2:
+                ent_dict[short] = val
+                
+        wx_rows = conn.execute(wx_sql, query_params).mappings().all()
+        sh_rows = conn.execute(sh_sql, query_params).mappings().all()
+        all_articles = list(wx_rows) + list(sh_rows)
+        
+    result_rows = []
+    
+    for row in all_articles:
+        title = (row.get("title") or "").strip()
+        content = (row.get("content") or "").strip()
+        text_all = title + " " + content[:2000]
+        
+        matched_ent = None
+        text_len = len(text_all)
+        
+        for length in range(30, 2, -1):
+            if matched_ent:
+                break
+            for i in range(text_len - length + 1):
+                sub = text_all[i:i+length]
+                if sub in ent_dict:
+                    matched_ent = ent_dict[sub]
+                    break
+                
+        if not matched_ent:
+            ent_nature = "非企"
+            ent_name = ""
+            ent_short = ""
+            ind1 = ""
+            region = row.get("sh_region") or ""
+            qual = ""
+        else:
+            ent_nature = "企业"
+            ent_name = matched_ent["full"]
+            ent_short = matched_ent["short"]
+            ind1 = matched_ent["ind"] or ""
+            region = matched_ent["dist"] or row.get("sh_region") or ""
+            qual = matched_ent["qual"] or ""
+            
+        tag_ss = "是" if "上市" in text_all else ""
+        tag_ipo = "是" if "IPO" in text_all.upper() else ""
+        tag_rz = "融资" if "融资" in text_all else ""
+        tag_sg = "收购" if ("收购" in text_all or "并购" in text_all) else ""
+            
+        abstract = row.get("Abstract") or ""
+        
+        if not abstract:
+            if ent_short and ent_short in content:
+                idx = content.find(ent_short)
+                start = max(0, idx - 20)
+                abstract = content[start:start+80].replace('\n', ' ').strip() + "..."
+            else:
+                abstract = content[:80].replace('\n', ' ').strip() + "..." if content else ""
+            
+        mocked_row = {
+            "EntName": ent_name,
+            "EntShortName": ent_short,
+            "Abstract": abstract,
+            "Scope": region,
+            "Industry1": ind1,
+            "Industry2": "",
+            "Industry3": "",
+            "Topic": "",
+            "Tag_SS": tag_ss,
+            "Tag_IPO": tag_ipo,
+            "Tag_RZ": tag_rz,
+            "Tag_SG": tag_sg,
+            "EnterpriseNature": ent_nature,
+            "CapitalNature": "",
+            "OtherNature": qual,
+            "news_tag": "",
+            "name": row.get("name") or "",
+            "title": title,
+            "content": content,
+            "release_time": row.get("release_time") or "",
+            "link": row.get("link") or "",
+            "source_type": row.get("source_type") or "",
+        }
+        
+        result_rows.append(mocked_row)
+        
+    return result_rows
+
+def get_articles_from_result_table(district: str = None) -> dict:
+    """从商机预计算结果表读取前端展示数据，在线接口只走该轻量查询。"""
+    sql = """
+        SELECT
+            ent_name, abstract, title, release_time, score, score_label, score_class,
+            source_name, link, industry, district, display_tags, matched_rules, sources
+        FROM opportunity_articles
+        WHERE is_valid = 1
+    """
+    params = {}
+    if district:
+        sql += " AND district = :district"
+        params["district"] = district
+    sql += " ORDER BY release_time DESC, score DESC LIMIT 500"
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).mappings().all()
+
+    groups_dict = {district: []} if district else {district_name: [] for district_name in DISTRICTS}
+    for row in rows:
+        group_name = (row.get("district") or "其他").strip() or "其他"
+        source_items = parse_json_list(row.get("sources"))
+        if not source_items:
+            release_time_raw = str(row.get("release_time") or "").strip()
+            source_items = [{
+                "source_name": row.get("source_name") or "其他",
+                "release_time": format_release_time(release_time_raw),
+                "release_time_raw": release_time_raw,
+                "link": row.get("link") or "",
+                "title": row.get("title") or "",
+            }]
+
+        article = {
+            "ent_name": row.get("ent_name") or "未命名企业",
+            "abstract": row.get("abstract") or "",
+            "title": row.get("title") or "",
+            "release_time": format_release_time(str(row.get("release_time") or "")),
+            "release_time_raw": str(row.get("release_time") or ""),
+            "score": row.get("score") or 0,
+            "score_label": row.get("score_label") or "关注",
+            "score_class": row.get("score_class") or "score-blue",
+            "source_name": row.get("source_name") or "其他",
+            "link": row.get("link") or "",
+            "industry": row.get("industry") or "",
+            "region": group_name,
+            "sort_group": group_name,
+            "hit": parse_json_list(row.get("matched_rules")),
+            "sources": source_items,
+            "display_tags": parse_json_list(row.get("display_tags")),
+        }
+        if group_name not in groups_dict:
+            groups_dict[group_name] = []
+        groups_dict[group_name].append(article)
+
+    groups = []
+    total_count = 0
+    for group_name, articles in groups_dict.items():
+        if group_name == "其他" and not articles:
+            continue
+        articles.sort(key=lambda article: article["release_time_raw"], reverse=True)
+        groups.append({"name": group_name, "count": len(articles), "articles": articles})
+        total_count += len(articles)
+
+    def get_group_order(group_name: str) -> int:
+        try:
+            return DISTRICTS.index(group_name)
+        except ValueError:
+            return 999
+
+    groups.sort(key=lambda group: get_group_order(group["name"]))
+    return {"date": get_today_display(), "total_count": total_count, "group_count": len(groups), "groups": groups}
+
+def get_articles_live(district: str = None, limit: int = 500) -> dict:
+    """旧版实时计算逻辑，仅供后台构建或应急调试使用；不要绑定在线页面接口。"""
+    rows = fetch_article_rows(limit=limit, district=district)
+    companies_dict = {}
+
+    for row in rows:
+        score_info = calc_article_opportunity_score(row)
+        if score_info["decision"] != "是":
+            continue
+        if district and score_info["region"] != district:
+            continue
+
+        ent_short = (row.get("EntShortName") or "").strip()
+        ent_full = (row.get("EntName") or "").strip()
+        ent_display = ent_short if ent_short else ent_full
+        if not ent_display:
+            continue
+
+        source_name = (row.get("name") or "").strip() or "其他"
+        score = score_info["score"]
+        label, css_class = score_to_display(score, score_info["level"])
+        release_time_raw = str(row.get("release_time") or "").strip()
+        source_item = {
+            "source_name": source_name,
+            "release_time": format_release_time(release_time_raw),
+            "release_time_raw": release_time_raw,
+            "link": (row.get("link") or "").strip(),
+            "title": (row.get("title") or "").strip(),
+        }
+
+        if ent_display not in companies_dict:
+            companies_dict[ent_display] = {
+                "ent_name": ent_display,
+                "abstract": (row.get("Abstract") or "").strip(),
+                "title": (row.get("title") or "").strip(),
+                "release_time": format_release_time(release_time_raw),
+                "release_time_raw": release_time_raw,
+                "score": score,
+                "score_label": label,
+                "score_class": css_class,
+                "source_name": source_name,
+                "link": (row.get("link") or "").strip(),
+                "industry": (row.get("Industry1") or "").strip(),
+                "topic": (row.get("Topic") or "").strip(),
+                "enterprise_nature": (row.get("EnterpriseNature") or "").strip(),
+                "decision": score_info["decision"],
+                "level": score_info["level"],
+                "type": score_info["type"],
+                "region": score_info["region"],
+                "hit": score_info["hit"],
+                "sort_group": score_info["region"] or "其他",
+                "sources": [source_item],
+                "display_tags": extract_article_display_tags(row),
+            }
+            continue
+
+        company = companies_dict[ent_display]
+        company["sources"].append(source_item)
+        company["hit"] = list(dict.fromkeys(company["hit"] + score_info["hit"]))
+        company["display_tags"] = list(dict.fromkeys(company["display_tags"] + extract_article_display_tags(row)))
+
+        if score > company["score"]:
+            company["score"] = score
+            company["score_label"] = label
+            company["score_class"] = css_class
+            company["level"] = score_info["level"]
+            company["type"] = score_info["type"] or company["type"]
+
+        if company["sort_group"] == "其他" and score_info["region"]:
+            company["region"] = score_info["region"]
+            company["sort_group"] = score_info["region"]
+
+        if release_time_raw > company["release_time_raw"]:
+            company["abstract"] = (row.get("Abstract") or "").strip()
+            company["title"] = (row.get("title") or "").strip()
+            company["release_time"] = format_release_time(release_time_raw)
+            company["release_time_raw"] = release_time_raw
+            company["source_name"] = source_name
+            company["link"] = (row.get("link") or "").strip()
+            if (row.get("Industry1") or "").strip():
+                company["industry"] = (row.get("Industry1") or "").strip()
+
+    if district:
+        groups_dict = {district: []}
+    else:
+        groups_dict = {district_name: [] for district_name in DISTRICTS}
+
+    for company in companies_dict.values():
+        company["sources"].sort(key=lambda s: s["release_time_raw"], reverse=True)
+        group_name = company["sort_group"]
+        if district and group_name != district:
+            continue
+        if group_name not in groups_dict:
+            groups_dict[group_name] = []
+        groups_dict[group_name].append(company)
+
+    groups = []
+    total_count = 0
+    for group_name, articles in groups_dict.items():
+        if group_name == "其他" and not articles:
+            continue
+        articles.sort(key=lambda article: article["release_time_raw"], reverse=True)
+        groups.append({
+            "name": group_name,
+            "count": len(articles),
+            "articles": articles,
+        })
+        total_count += len(articles)
+
+    def get_group_order(group_name: str) -> int:
+        try:
+            return DISTRICTS.index(group_name)
+        except ValueError:
+            return 999
+
+    groups.sort(key=lambda group: get_group_order(group["name"]))
+    return {
+        "date": get_today_display(),
+        "total_count": total_count,
+        "group_count": len(groups),
+        "groups": groups,
+    }
+
+def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_existing: bool = True) -> dict:
+    """后台构建商机预计算结果表，供定时任务/手动刷新调用。"""
+    live_data = get_articles_live(district=district, limit=limit)
+    articles = []
+    for group in live_data.get("groups", []):
+        for article in group.get("articles", []):
+            article["region"] = article.get("region") or group.get("name")
+            articles.append(article)
+
+    with SessionLocal() as session:
+        if clear_existing:
+            query = session.query(OpportunityArticle)
+            if district:
+                query = query.filter(OpportunityArticle.district == district)
+            query.delete(synchronize_session=False)
+
+        for article in articles:
+            release_time_raw = str(article.get("release_time_raw") or "").strip()
+            sources = article.get("sources") or []
+            content_hash_raw = "|".join([
+                article.get("ent_name") or "",
+                article.get("title") or "",
+                article.get("abstract") or "",
+                release_time_raw,
+                json.dumps(sources, ensure_ascii=False, sort_keys=True),
+            ])
+            record = OpportunityArticle(
+                article_uid=hashlib.sha256(((article.get("link") or article.get("title") or article.get("ent_name") or "") + release_time_raw).encode("utf-8")).hexdigest()[:32],
+                source_type="aggregated",
+                source_name=article.get("source_name") or "其他",
+                title=article.get("title") or "",
+                link=article.get("link") or "",
+                release_time=release_time_raw,
+                district=article.get("region") or article.get("sort_group") or "其他",
+                ent_name=article.get("ent_name") or "未命名企业",
+                industry=article.get("industry") or "",
+                abstract=article.get("abstract") or "",
+                score=article.get("score") or 0,
+                score_label=article.get("score_label") or "关注",
+                score_class=article.get("score_class") or "score-blue",
+                display_tags=json.dumps(article.get("display_tags") or [], ensure_ascii=False),
+                matched_rules=json.dumps(article.get("hit") or [], ensure_ascii=False),
+                sources=json.dumps(sources, ensure_ascii=False),
+                content_hash=hashlib.sha256(content_hash_raw.encode("utf-8")).hexdigest(),
+                is_valid=1,
+                noise_reason="",
+            )
+            session.add(record)
+        session.commit()
+
+    return {
+        "status": "success",
+        "district": district,
+        "count": len(articles),
+        "group_count": live_data.get("group_count", 0),
+    }
+
+def get_articles(district: str = None) -> dict:
+    """返回前端商机列表所需的数据结构，兼容 /api/articles。"""
+    return get_articles_from_result_table(district=district)
+
+def get_articles_summary(district: str = None) -> dict:
+    """获取商机汇总指标，供 regional.py 生成聊天卡片；district 为空时统计上海市全部区域。"""
+    empty_summary = {
+        "total": 0,
+        "hot": 0,
+        "watch": 0,
+        "top_industries": [],
+        "latest_titles": [],
+        "district_counts": [],
+    }
+    try:
+        articles_data = get_articles(district=district)
+    except Exception as e:
+        print(f"【Article Summary Error】获取 {district or '上海市'} 商机汇总失败: {e}")
+        return empty_summary
+
+    articles = []
+    district_counter = Counter()
+    for group in articles_data.get("groups", []):
+        group_articles = group.get("articles", [])
+        if group.get("name"):
+            district_counter[group.get("name")] += len(group_articles)
+        articles.extend(group_articles)
+
+    hot_count = sum(1 for article in articles if article.get("score_label") == "HOT")
+    watch_count = sum(1 for article in articles if article.get("score_label") == "关注")
+    industry_counter = Counter(
+        article.get("industry") for article in articles if article.get("industry")
+    )
+    latest_articles = sorted(
+        articles,
+        key=lambda article: article.get("release_time_raw") or "",
+        reverse=True,
+    )
+
+    return {
+        "total": len(articles),
+        "hot": hot_count,
+        "watch": watch_count,
+        "top_industries": [name for name, _ in industry_counter.most_common(5)],
+        "latest_titles": [article.get("title") for article in latest_articles[:5] if article.get("title")],
+        "district_counts": [{"name": name, "count": district_counter.get(name, 0)} for name in DISTRICTS],
+    }
+
+def get_articles_summary_fast(district: str) -> dict:
+    """
+    获取区域商机聊天卡片所需的轻量汇总。
+
+    该函数避免调用 get_articles()/fetch_article_rows() 的全量实体链接与全文滑动窗口逻辑，
+    只基于政企新闻表中的区域、标题、内容做快速统计，保证聊天接口可以快速返回。
+    明细页仍继续使用 get_articles() 展示完整列表。
+    """
+    empty_summary = {
+        "total": 0,
+        "hot": 0,
+        "watch": 0,
+        "top_industries": [],
+        "latest_titles": [],
+    }
+    if not district:
+        return empty_summary
+
+    district_short = district.replace("新区", "").replace("区", "")
+    like_patterns = [f"%{district}%"]
+    if district_short and district_short != district:
+        like_patterns.append(f"%{district_short}%")
+
+    where_clause = " OR ".join([
+        "`项目落地地区` LIKE :pattern_{0} OR `标题` LIKE :pattern_{0}".format(i)
+        for i in range(len(like_patterns))
+    ])
+    params = {f"pattern_{i}": pattern for i, pattern in enumerate(like_patterns)}
+
+    sql = text(f"""
+        SELECT
+            `标题` AS title,
+            `内容` AS content,
+            `发布日期` AS release_time,
+            `项目落地地区` AS sh_region
+        FROM zq_dtl_shnews_yyy
+        WHERE ({where_clause})
+          AND `标题` IS NOT NULL
+          AND `标题` != ''
+        ORDER BY `发布日期` DESC
+        LIMIT 120
+    """)
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().all()
+    except Exception as e:
+        print(f"【Article Fast Summary Error】获取 {district} 轻量商机汇总失败: {e}")
+        return empty_summary
+
+    hot_count = 0
+    watch_count = 0
+    industry_counter = Counter()
+    latest_titles = []
+
+    industry_keywords = [
+        "人工智能", "生物医药", "集成电路", "软件", "信息技术", "数字经济", "智能制造",
+        "新能源", "新材料", "机器人", "金融", "文创", "航运", "汽车", "半导体",
+    ]
+
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        content = (row.get("content") or "").strip()
+        text_all = title + content[:1000]
+
+        score = 0
+        for _, points, keywords in SCORING_RULES:
+            if has_any(text_all, keywords):
+                score += points
+        score = min(score, 100)
+
+        if score >= 55:
+            hot_count += 1
+        elif score >= 30:
+            watch_count += 1
+
+        for industry in industry_keywords:
+            if industry in text_all:
+                industry_counter[industry] += 1
+
+        if title and len(latest_titles) < 5:
+            latest_titles.append(title)
+
+    return {
+        "total": len(rows),
+        "hot": hot_count,
+        "watch": watch_count,
+        "top_industries": [name for name, _ in industry_counter.most_common(5)],
+        "latest_titles": latest_titles,
+    }

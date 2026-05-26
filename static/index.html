@@ -1343,6 +1343,89 @@
             0% { opacity: 0.4; }
             100% { opacity: 1; }
         }
+
+        /* Colleague's High-Potential Customers Card Styles */
+        .potential-card-list {
+            margin-top: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .potential-card {
+            border: 1px solid var(--glass-border);
+            background: rgba(8, 13, 24, 0.58);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+        }
+
+        .potential-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .potential-name {
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        .potential-meta {
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin-top: 3px;
+        }
+
+        .potential-score {
+            min-width: 58px;
+            text-align: center;
+            border-radius: 12px;
+            padding: 6px 8px;
+            background: rgba(245, 158, 11, 0.14);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: #fbbf24;
+            font-weight: 700;
+        }
+
+        .potential-score small {
+            display: block;
+            color: #fcd34d;
+            font-size: 10px;
+            margin-top: 2px;
+        }
+
+        .potential-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 8px 0 10px;
+        }
+
+        .potential-tag {
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(59, 130, 246, 0.12);
+            border: 1px solid rgba(59, 130, 246, 0.24);
+            color: #93c5fd;
+            font-size: 11px;
+        }
+
+        .potential-reason,
+        .potential-action {
+            color: var(--text-primary);
+            font-size: 12.5px;
+            line-height: 1.6;
+            margin-top: 6px;
+        }
+
+        .potential-action {
+            color: #a7f3d0;
+        }
     </style>
 </head>
 <body>
@@ -2125,6 +2208,65 @@
                 `;
                 bubble.appendChild(card);
             } 
+            else if (payload.type === 'regional_report') {
+                const action = payload.actions && payload.actions.length > 0 ? payload.actions[0] : null;
+                const metrics = payload.metrics || {};
+                const card = document.createElement('div');
+                card.className = 'card-file';
+                card.style.borderColor = 'var(--accent-primary)';
+                card.innerHTML = `
+                    <div class="file-icon" style="background:rgba(59, 130, 246, 0.15);color:#60a5fa;">🏙️</div>
+                    <div class="file-details">
+                        <span class="file-name">${payload.title || payload.district + '商机报告'}</span>
+                        <span class="file-meta"><span>${metrics.total || 0} 条商机</span> | <span>HOT ${metrics.hot || 0} · 关注 ${metrics.watch || 0}</span></span>
+                    </div>
+                    ${action ? `<a href="${action.url}" target="_blank" class="download-btn" style="background:var(--accent-gradient)">${action.label || '查看商机明细'}</a>` : ''}
+                `;
+                bubble.appendChild(card);
+            }
+            else if (payload.type === 'high_potential_customers') {
+                const list = document.createElement('div');
+                list.className = 'potential-card-list';
+                const items = payload.items || [];
+                if (items.length === 0) {
+                    list.innerHTML = `<div class="potential-card"><div class="potential-reason">暂无符合条件的高潜客户，请尝试放宽区域、行业或评分条件。</div></div>`;
+                } else {
+                    list.innerHTML = items.map(item => {
+                        const tags = (item.signals || []).map(tag => `<span class="potential-tag">${tag}</span>`).join('');
+                        const nameHtml = item.link ? `<a href="${item.link}" target="_blank" class="table-link">${item.name}</a>` : item.name;
+                        return `
+                            <div class="potential-card">
+                                <div class="potential-card-header">
+                                    <div>
+                                        <div class="potential-name">${nameHtml}</div>
+                                        <div class="potential-meta">${item.region || '未标注'} · ${item.industry || '未标注'} · 客户经理：${item.account_manager || '待分配'}</div>
+                                    </div>
+                                    <div class="potential-score">${item.score}<small>${item.level || '关注'}</small></div>
+                                </div>
+                                <div class="potential-tags">${tags || '<span class="potential-tag">基础信息匹配</span>'}</div>
+                                <div class="potential-reason">${item.reason || ''}</div>
+                                <div class="potential-action">${item.next_action || ''}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                bubble.appendChild(list);
+
+                const action = payload.actions && payload.actions.length > 0 ? payload.actions[0] : null;
+                if (action && action.url) {
+                    const excelRow = document.createElement('div');
+                    excelRow.className = 'table-action-row';
+                    excelRow.innerHTML = `
+                        <a href="${action.url}" download class="excel-btn">
+                            <svg style="width:14px;height:14px;fill:#34d399" viewBox="0 0 24 24">
+                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,8H14L20,14V20A2,2 0 0,0 18,22H6A2,2 0 0,0 4,20V4A2,2 0 0,0 6,2H14M13,3.5L18.5,9H13V3.5M8,11V13H11V11H8M12,11V13H15V11H12M8,14V16H11V14H8M12,14V16H15V14H12M8,17V19H11V17H8M12,17V19H15V17H12Z"/>
+                            </svg>
+                            ${action.label || '导出高潜客户 Excel'}
+                        </a>
+                    `;
+                    bubble.appendChild(excelRow);
+                }
+            }
             else if (payload.type === 'table') {
                 const card = document.createElement('div');
                 card.className = 'table-container';
@@ -2177,10 +2319,6 @@
                     bubble.appendChild(excelRow);
                 }
             }
-
-            row.appendChild(avatar);
-            row.appendChild(bubble);
-            container.appendChild(row);
         }
 
         function appendLoading() {

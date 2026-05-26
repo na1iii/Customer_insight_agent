@@ -5,6 +5,7 @@ app.py - FastAPI 核心网关与服务端主入口
 
 import os
 import sys
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -173,9 +174,15 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
             if res.get("type") == "html_link":
                 guide_text = f"已成功为您生成 **{res.get('region_name', '')}** 经济运行分析报告网页，请点击下方卡片打开网页查看："
                 db.log_event(user_id, resolved_scene, "INFO", f"区域分析报告网页生成成功: {res.get('url')}")
+            elif res.get("type") == "regional_report":
+                guide_text = res.get("summary") or f"已为您生成 **{res.get('district', '')}** 商机分析，请点击下方按钮查看明细。"
+                db.log_event(user_id, resolved_scene, "INFO", f"区域商机报告生成成功: {res.get('district')}")
             elif res.get("type") == "file_link":
                 guide_text = f"已成功为您编译生成行业研究报告：《{res.get('title', '')}》。"
                 db.log_event(user_id, resolved_scene, "INFO", f"行业 HTML 报告生成并完成推送: {res.get('url')}")
+            elif res.get("type") == "high_potential_customers":
+                guide_text = res.get("summary") or f"已为您筛选出 {res.get('count', 0)} 家高潜客户。"
+                db.log_event(user_id, resolved_scene, "INFO", f"高潜客户推荐卡片生成成功，数量: {res.get('count')}")
             elif res.get("type") == "table":
                 guide_text = f"已为您筛选出与关键词最匹配的 {res.get('count', 0)} 家高潜客户列表，点击下方表格链接可直达详情，同时支持导出 Excel："
                 db.log_event(user_id, resolved_scene, "INFO", f"高潜客户推荐表格编译成功，数量: {res.get('count')}")
@@ -229,6 +236,73 @@ async def chat_endpoint(request: ChatRequest):
         chat_generator(user_text, scene, conv_id, user_id),
         media_type="text/event-stream"
     )
+
+# 7.5. 公众号商机文章及高潜 Excel 导出路由
+@app.get("/api/articles")
+async def get_articles_endpoint(district: Optional[str] = None):
+    return db.get_articles(district=district)
+
+@app.post("/api/articles/rebuild")
+async def rebuild_articles_endpoint(
+    district: Optional[str] = None,
+    limit: int = 500,
+    clear_existing: bool = True,
+):
+    """
+    手动刷新商机预计算结果表。
+    """
+    try:
+        safe_limit = max(1, min(limit, 2000))
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                db.rebuild_opportunity_articles,
+                district=district,
+                limit=safe_limit,
+                clear_existing=clear_existing,
+            ),
+            timeout=120.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="商机预计算刷新超过 120 秒，请降低 limit 或按区县分批刷新。")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"商机预计算刷新失败: {str(e)}")
+
+@app.get("/api/potential/export")
+async def export_potential_endpoint(
+    district: Optional[str] = None,
+    industry: Optional[str] = None,
+    keyword: Optional[str] = None,
+    score_min: int = 55,
+    user_id: Optional[int] = None,
+):
+    try:
+        excel_path = potential.export_excel(
+            district=district,
+            industry=industry,
+            keyword=keyword,
+            score_min=score_min,
+            user_id=user_id,
+        )
+        filename = os.path.basename(excel_path)
+        return FileResponse(
+            excel_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=filename,
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        db.log_event(user_id, "potential", "ERROR", f"高潜客户 Excel 导出失败: {str(e)}", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"高潜客户 Excel 导出失败: {str(e)}")
+
+@app.get("/ui_1.html")
+async def get_regional_opportunity_page():
+    ui_html = os.path.join(static_path, "ui_1.html")
+    if os.path.exists(ui_html):
+        return FileResponse(ui_html)
+    raise HTTPException(status_code=404, detail="区域商机明细页未找到")
 
 # 8. 默认主页跳转
 @app.get("/")
