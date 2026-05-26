@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>区域商机报告</title>
+    <style>
+        :root {
+            --page-bg: #dbeafe;
+            --primary-bg: #f7faff;
+            --header-gradient: linear-gradient(145deg, #1d2b8f 0%, #3157d4 46%, #12a6d8 100%);
+            --card-bg: rgba(255, 255, 255, 0.96);
+            --card-solid: #ffffff;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --text-muted: #94a3b8;
+            --blue-accent: #2563eb;
+            --cyan-accent: #06b6d4;
+            --purple-accent: #6366f1;
+            --border-color: #e2e8f0;
+            --soft-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            --hover-shadow: 0 18px 42px rgba(37, 99, 235, 0.14);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background:
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.24), transparent 34%),
+                radial-gradient(circle at bottom right, rgba(6, 182, 212, 0.22), transparent 30%),
+                var(--page-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            -webkit-font-smoothing: antialiased;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            background: linear-gradient(180deg, rgba(247, 250, 255, 0.92) 0%, #eef5ff 52%, #f8fbff 100%);
+            min-height: 100vh;
+            position: relative;
+            padding-bottom: 34px;
+            box-shadow: 0 0 34px rgba(15, 23, 42, 0.18);
+            overflow: hidden;
+        }
+
+        .app-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background-image: linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px);
+            background-size: 28px 28px;
+            mask-image: linear-gradient(180deg, transparent 0, black 160px, transparent 520px);
+        }
+
+        .header {
+            background:
+                radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.35), transparent 23%),
+                radial-gradient(circle at 88% 18%, rgba(34, 211, 238, 0.42), transparent 24%),
+                var(--header-gradient);
+            padding: 38px 20px 42px;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before,
+        .header::after {
+            content: '';
+            position: absolute;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            pointer-events: none;
+        }
+
+        .header::before { width: 210px; height: 210px; left: -88px; top: -78px; }
+        .header::after { width: 160px; height: 160px; right: -72px; bottom: -72px; }
+
+        .header-icon {
+            width: 58px;
+            height: 58px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(226, 242, 255, 0.9));
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            font-size: 27px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-kicker {
+            width: fit-content;
+            margin: 0 auto 10px;
+            padding: 4px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.13);
+            backdrop-filter: blur(12px);
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 25px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 3px 12px rgba(15, 23, 42, 0.22);
+        }
+
+        .header .subtitle {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            margin-top: 9px;
+            margin-bottom: 24px;
+            opacity: 0.88;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-tags {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-tag {
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 18px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(14px);
+            padding: 7px 13px;
+            border-radius: 999px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .list-container {
+            padding: 0 15px;
+            margin-top: -22px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .location-group {
+            background: var(--card-bg);
+            border-radius: 18px;
+            margin-bottom: 16px;
+            box-shadow: var(--soft-shadow);
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            overflow: hidden;
+            backdrop-filter: blur(18px);
+        }
+
+        .location-header {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .location-header-right { display: flex; align-items: center; gap: 10px; }
+        .toggle-icon { color: #94a3b8; transition: transform 0.3s ease; font-size: 12px; }
+        .location-group.collapsed .toggle-icon { transform: rotate(-90deg); }
+        .location-group.collapsed .location-content { display: none; }
+        .location-group.collapsed .location-header { border-bottom: none; }
+
+        .location-title {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            font-weight: 750;
+            font-size: 15px;
+            min-width: 0;
+        }
+
+        .location-title span:last-child {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .location-icon {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(145deg, #dbeafe, #eef2ff);
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--blue-accent);
+            font-size: 15px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            flex-shrink: 0;
+        }
+
+        .item-count {
+            background: #eef2ff;
+            color: #4338ca;
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid #e0e7ff;
+        }
+
+        .news-item {
+            padding: 16px 15px;
+            display: flex;
+            gap: 13px;
+            border-bottom: 1px solid #eef2f7;
+            transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+        }
+
+        .news-item:last-child { border-bottom: none; }
+        .news-item:hover { background-color: #fbfdff; transform: translateY(-1px); box-shadow: var(--hover-shadow); z-index: 1; }
+
+        .score-circle {
+            width: 52px;
+            height: 52px;
+            border-radius: 17px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .score-circle::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 45%);
+            pointer-events: none;
+        }
+
+        .score-number { font-size: 19px; font-weight: 900; line-height: 1; position: relative; z-index: 1; }
+        .score-label { font-size: 9px; margin-top: 4px; letter-spacing: 0.08em; font-weight: 800; position: relative; z-index: 1; }
+        .score-blue { background: linear-gradient(145deg, #2563eb, #7c3aed); }
+        .score-red { background: linear-gradient(145deg, #ef4444, #f97316); }
+        .score-gray { background: linear-gradient(145deg, #64748b, #94a3b8); }
+
+        .news-content { flex-grow: 1; min-width: 0; }
+        .news-title { font-weight: 750; font-size: 15.5px; margin: 0 0 8px 0; line-height: 1.45; color: #111827; }
+
+        .news-title a {
+            color: inherit;
+            text-decoration: none;
+            background-image: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(6, 182, 212, 0.28));
+            background-size: 0 2px;
+            background-repeat: no-repeat;
+            background-position: 0 100%;
+            transition: color 0.2s ease, background-size 0.2s ease;
+        }
+
+        .news-title a:hover { color: var(--blue-accent); background-size: 100% 2px; }
+
+        .news-desc {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin: 0 0 11px 0;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #f8fbff 0%, #f1f6fd 100%);
+            padding: 10px 11px;
+            border-radius: 11px;
+            border-left: 3px solid #93c5fd;
+        }
+
+        .news-meta {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            max-width: 100%;
+            color: #64748b;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 4px 8px;
+            border-radius: 999px;
+            line-height: 1.2;
+        }
+
+        .source-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+        .source-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 9px;
+            border-radius: 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .source-link {
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .source-date { color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+
+        .logic-section {
+            background: var(--card-bg);
+            border-radius: 18px;
+            margin: 22px 15px;
+            padding: 18px 15px 16px;
+            box-shadow: var(--soft-shadow);
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            position: relative;
+            z-index: 1;
+        }
+
+        .section-title {
+            font-weight: 800;
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px dashed #dbe4ef;
+            padding-bottom: 13px;
+        }
+
+        .section-badge {
+            font-size: 12px;
+            color: #2563eb;
+            font-weight: 800;
+            margin-left: auto;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 999px;
+            padding: 4px 9px;
+            white-space: nowrap;
+        }
+
+        .rules-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        .rule-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 10px;
+            border-radius: 13px;
+            background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+            border: 1px solid #eaf0f8;
+        }
+
+        .rule-icon {
+            width: 25px;
+            height: 25px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            background: #eff6ff;
+            border-radius: 9px;
+            flex-shrink: 0;
+        }
+
+        .rule-content { flex-grow: 1; min-width: 0; }
+        .rule-score { font-size: 13px; font-weight: 900; color: var(--blue-accent); }
+        .rule-name { font-size: 13px; font-weight: 800; color: var(--text-main); }
+        .rule-desc { font-size: 11px; color: var(--text-sub); margin-top: 3px; line-height: 1.45; }
+
+        .filter-note {
+            margin-top: 14px;
+            padding-top: 13px;
+            border-top: 1px dashed #dbe4ef;
+            color: #94a3b8;
+            font-size: 12px;
+            line-height: 1.8;
+            display: flex;
+            align-items: flex-start;
+            gap: 7px;
+        }
+
+        .filter-icon { flex-shrink: 0; opacity: 0.85; }
+        .filter-note strong { color: #64748b; font-weight: 800; }
+
+        .footer-note {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-sub);
+            margin-top: 25px;
+            padding: 0 22px;
+            line-height: 1.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .footer-note span { color: #4f46e5; font-weight: 700; display: block; margin-top: 6px; }
+
+        .loading {
+            text-align: center;
+            padding: 58px 20px;
+            color: var(--text-sub);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            border-radius: 18px;
+            box-shadow: var(--soft-shadow);
+        }
+
+        .loading .spinner {
+            width: 38px;
+            height: 38px;
+            border: 3px solid #dbeafe;
+            border-top-color: var(--blue-accent);
+            border-right-color: var(--cyan-accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            text-align: center;
+            padding: 42px 20px;
+            color: #ef4444;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid #fecaca;
+            border-radius: 18px;
+            box-shadow: var(--soft-shadow);
+            line-height: 1.7;
+        }
+
+        @media (max-width: 380px) {
+            .header h1 { font-size: 22px; }
+            .rules-grid { grid-template-columns: 1fr; }
+            .news-item { gap: 10px; }
+            .score-circle { width: 48px; height: 48px; border-radius: 15px; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="header-icon">📡</div>
+            <div class="header-kicker" id="header-kicker">区域商机雷达</div>
+            <h1 id="page-title">区域商机报告</h1>
+            <div class="subtitle">Regional Opportunity Intelligence</div>
+            <div class="header-tags">
+                <div class="header-tag" id="date-tag">📅 加载中...</div>
+                <div class="header-tag" id="count-tag">🏢 加载中...</div>
+            </div>
+        </div>
+
+        <div class="list-container" id="list-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>正在加载商机数据...</div>
+            </div>
+        </div>
+
+        <div class="logic-section">
+            <div class="section-title">📐 入选逻辑 & 评分维度 <span class="section-badge">满分100分</span></div>
+            <div class="rules-grid">
+                <div class="rule-item"><div class="rule-icon">🏗️</div><div class="rule-content"><span class="rule-name">投资落地</span> <span class="rule-score">25</span><div class="rule-desc">企业投资/落户/开工/投产</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🤝</div><div class="rule-content"><span class="rule-name">重大签约</span> <span class="rule-score">20</span><div class="rule-desc">企业签约/战略合作/对接</div></div></div>
+                <div class="rule-item"><div class="rule-icon">👔</div><div class="rule-content"><span class="rule-name">领导调研</span> <span class="rule-score">15</span><div class="rule-desc">领导走访/调研/考察视察</div></div></div>
+                <div class="rule-item"><div class="rule-icon">💰</div><div class="rule-content"><span class="rule-name">资本融资</span> <span class="rule-score">10</span><div class="rule-desc">企业融资/IPO/上市/基金</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🚀</div><div class="rule-content"><span class="rule-name">技术突破</span> <span class="rule-score">10</span><div class="rule-desc">研发突破/获奖认证/首发</div></div></div>
+                <div class="rule-item"><div class="rule-icon">📊</div><div class="rule-content"><span class="rule-name">具化数据</span> <span class="rule-score">10</span><div class="rule-desc">涉及明确金额/规模等数据</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🎤</div><div class="rule-content"><span class="rule-name">会议论坛</span> <span class="rule-score">10</span><div class="rule-desc">行业大会/论坛/推介发布会</div></div></div>
+            </div>
+            <div class="filter-note">
+                <span class="filter-icon">🗑️</span>
+                <span><strong>已过滤噪音（非商机）：</strong>无具体企业 ・ 非企主体 ・ 低于采集标准 ・ 现代服务业/民生行业下的餐饮、餐厅、饭店、火锅、烧烤、咖啡、奶茶、茶饮、糖水、烘焙、甜品、小吃、美食等</span>
+            </div>
+        </div>
+
+        <div class="footer-note">
+            💡 关注本行政区商机动态，及时对接跟进！<br>
+            🔍 点击公司名称或来源可查看原文<br>
+            <span>— AI 客户智能洞察助理 • 区域商机报告 —</span>
+        </div>
+    </div>
+
+    <script>
+        const GROUP_ICONS = ['🔷', '🏘️', '🏭', '🏢', '📰', '🏛️', '🌐', '📡', '🔬', '🏗️'];
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function truncate(text, maxLen) {
+            if (!text) return '';
+            return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
+        }
+
+        function getDistrictParam() {
+            const params = new URLSearchParams(window.location.search);
+            const district = params.get('district');
+            return district ? district.trim() : '';
+        }
+
+        function buildApiUrl(district) {
+            return district ? `/api/articles?district=${encodeURIComponent(district)}` : '/api/articles';
+        }
+
+        function updateHeader(data, district) {
+            const title = district ? `${district}商机报告` : '上海市商机报告';
+            document.title = title;
+            document.getElementById('page-title').textContent = title;
+            document.getElementById('header-kicker').textContent = district ? `${district}商机雷达` : '上海市16区商机雷达';
+            document.getElementById('date-tag').textContent = `📅 ${data.date || ''}`;
+            document.getElementById('count-tag').textContent = `🏢 共${data.total_count || 0}条 • ${data.group_count || 0}个区域`;
+        }
+
+        function renderArticle(article) {
+            const displayName = escapeHtml(article.ent_name || article.title || '未命名企业');
+            const titleContent = article.link
+                ? `<a href="${escapeHtml(article.link)}" target="_blank" rel="noopener noreferrer">${displayName}</a>`
+                : displayName;
+
+            const sourceList = (article.sources || []).map(source => {
+                const sourceName = escapeHtml(source.source_name || '其他');
+                const sourceText = `📍 ${sourceName}`;
+                const sourceNameHtml = source.link
+                    ? `<a class="source-link" href="${escapeHtml(source.link)}" target="_blank" rel="noopener noreferrer">${sourceText}</a>`
+                    : `<span class="source-link">${sourceText}</span>`;
+                return `
+                    <div class="source-item">
+                        ${sourceNameHtml}
+                        ${source.release_time ? `<span class="source-date">📅 ${escapeHtml(source.release_time)}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            const tagsHtml = (article.display_tags || [])
+                .map(tag => `<span class="meta-pill">🏷️ ${escapeHtml(tag)}</span>`)
+                .join('');
+
+            return `
+                <div class="news-item">
+                    <div class="score-circle ${escapeHtml(article.score_class || 'score-gray')}">
+                        <span class="score-number">${escapeHtml(article.score || 0)}</span>
+                        <span class="score-label">${escapeHtml(article.score_label || '关注')}</span>
+                    </div>
+                    <div class="news-content">
+                        <h3 class="news-title">${titleContent}</h3>
+                        ${article.abstract ? `<p class="news-desc">${escapeHtml(truncate(article.abstract, 120))}</p>` : ''}
+                        <div class="news-meta">
+                            ${article.industry ? `<span class="meta-pill">🏭 ${escapeHtml(article.industry)}</span>` : ''}
+                            ${tagsHtml}
+                            ${article.sources ? `<span class="meta-pill">📰 ${article.sources.length} 条来源</span>` : ''}
+                        </div>
+                        ${sourceList ? `<div class="source-list">${sourceList}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderGroup(group, index, district) {
+            const icon = GROUP_ICONS[index % GROUP_ICONS.length];
+            const articlesHtml = (group.articles || []).map(article => renderArticle(article)).join('');
+            const collapsedClass = district ? '' : ' collapsed';
+            return `
+                <div class="location-group${collapsedClass}">
+                    <div class="location-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                        <div class="location-title">
+                            <span class="location-icon">${icon}</span>
+                            <span>${escapeHtml(group.name)}</span>
+                        </div>
+                        <div class="location-header-right">
+                            <div class="item-count">${escapeHtml(group.count || 0)} 条</div>
+                            <div class="toggle-icon">▼</div>
+                        </div>
+                    </div>
+                    <div class="location-content">${articlesHtml}</div>
+                </div>
+            `;
+        }
+
+        async function loadData() {
+            const district = getDistrictParam();
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
+            try {
+                const resp = await fetch(buildApiUrl(district), { signal: controller.signal });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                updateHeader(data, district);
+
+                const container = document.getElementById('list-container');
+                if (!data.groups || data.groups.length === 0 || data.total_count === 0) {
+                    container.innerHTML = `<div class="error-msg">暂无${escapeHtml(district || '区域')}商机数据<br>如刚导入新文章，请先刷新商机预计算结果。</div>`;
+                    return;
+                }
+
+                data.groups.sort((a, b) => (b.count || 0) - (a.count || 0));
+                container.innerHTML = data.groups.map((group, index) => renderGroup(group, index, district)).join('');
+            } catch (err) {
+                console.error('加载数据失败:', err);
+                const message = err.name === 'AbortError'
+                    ? '接口响应超过 15 秒，商机结果可能正在刷新中，请稍后重试。'
+                    : err.message;
+                document.getElementById('list-container').innerHTML =
+                    `<div class="error-msg">⚠️ 数据加载失败: ${escapeHtml(message)}<br>请确保后端服务已启动，且 /api/articles 接口可访问</div>`;
+            } finally {
+                window.clearTimeout(timeoutId);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+
+</html>
