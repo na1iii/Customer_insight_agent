@@ -630,10 +630,11 @@
         }
 
         .message-row.bot .avatar {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--glass-border);
+            background: var(--accent-gradient);
+            border: none;
             margin-right: 14px;
             order: 1;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
         }
 
         .bubble {
@@ -2272,15 +2273,10 @@
             const row = document.createElement('div');
             row.className = 'message-row user';
             
-            const avatar = document.createElement('div');
-            avatar.className = 'avatar';
-            avatar.innerHTML = '👤';
-
             const bubble = document.createElement('div');
             bubble.className = 'bubble bubble-md';
             bubble.innerText = content;
 
-            row.appendChild(avatar);
             row.appendChild(bubble);
             container.appendChild(row);
         }
@@ -2292,7 +2288,11 @@
             
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
-            avatar.innerHTML = '🤖';
+            avatar.innerHTML = `
+                <svg viewBox="0 0 24 24" width="22" height="22">
+                    <path fill="#ffffff" d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/>
+                </svg>
+            `;
 
             const bubble = document.createElement('div');
             bubble.className = 'bubble bubble-md';
