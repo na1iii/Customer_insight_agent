@@ -1887,6 +1887,9 @@
         }
 
         async function selectConversation(id) {
+            if (activeConversationId === id) return;
+            stopGeneration();
+            
             if (showingLogs) {
                 toggleLogsView();
             }
@@ -2026,6 +2029,7 @@
             scrollToBottom();
 
             // 显示思考动画骨架
+            const currentConvId = activeConversationId;
             const loadingId = appendLoading();
             scrollToBottom();
 
@@ -2077,6 +2081,10 @@
                     buffer = lines.pop();
 
                     for (const line of lines) {
+                        if (activeConversationId !== currentConvId) {
+                            if (activeController) stopGeneration();
+                            return;
+                        }
                         const trimmed = line.trim();
                         if (!trimmed) continue;
 
@@ -2235,6 +2243,7 @@
                 }
 
             } catch (err) {
+                if (activeConversationId !== currentConvId) return;
                 removeLoading(loadingId);
                 if (err.name === 'AbortError') {
                     if (bubbleEl) {
