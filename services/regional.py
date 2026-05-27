@@ -3,7 +3,10 @@
 regional.py - 场景2：区级报告。生成区域商机分析卡片与明细页跳转链接。
 """
 
+import os
 from urllib.parse import quote
+from sqlalchemy import text
+from utils.rag_engine import RAGEngine
 import utils.db_helper as db
 
 
@@ -90,6 +93,137 @@ def build_city_items(summary: dict) -> list[dict]:
     ]
 
 
+def _clean_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit: int = 80) -> list[dict]:
+    """从商机预计算表加载区域 RAG 文档，保持与明细页一致的数据口径。"""
+    where_parts = ["is_valid = 1"]
+    params = {"limit": limit}
+    if not is_city_report:
+        where_parts.append("district = :district")
+        params["district"] = region_name
+
+    sql = text(f"""
+        SELECT title, abstract, release_time, source_name, link, district, ent_name,
+               industry, score, score_label, display_tags, matched_rules
+        FROM opportunity_articles
+        WHERE {' AND '.join(where_parts)}
+        ORDER BY score DESC, release_time DESC
+        LIMIT :limit
+    """)
+
+    documents = []
+    try:
+        with db.engine.connect() as conn:
+            rows = [dict(row) for row in conn.execute(sql, params).mappings().all()]
+    except Exception as exc:
+        db.log_event(None, "regional", "WARNING", f"区域 RAG 文档加载失败: {exc}")
+        return documents
+
+    for row in rows:
+        district = _clean_text(row.get("district")) or region_name
+        title = _clean_text(row.get("title")) or _clean_text(row.get("ent_name")) or "区域商机"
+        content = "\n".join([
+            f"行政区：{district}",
+            f"企业：{_clean_text(row.get('ent_name'))}",
+            f"行业：{_clean_text(row.get('industry'))}",
+            f"商机等级：{_clean_text(row.get('score_label'))}",
+            f"商机评分：{_clean_text(row.get('score'))}",
+            f"标题：{title}",
+            f"摘要：{_clean_text(row.get('abstract'))}",
+            f"标签：{_clean_text(row.get('display_tags'))}",
+            f"命中规则：{_clean_text(row.get('matched_rules'))}",
+        ])
+        documents.append({
+            "title": title,
+            "content": content,
+            "publish_date": _clean_text(row.get("release_time")),
+            "source": _clean_text(row.get("source_name")) or "opportunity_articles",
+            "link": _clean_text(row.get("link")),
+            "company": district,
+            "district": district,
+            "industry": _clean_text(row.get("industry")),
+            "doc_type": "regional_opportunity",
+            "entity_name": _clean_text(row.get("ent_name")),
+        })
+    return documents
+
+
+def _build_regional_rag_query(keyword: str, region_name: str, is_city_report: bool, summary: dict) -> str:
+    scope = "上海市16区" if is_city_report else region_name
+    industries = "、".join(summary.get("top_industries", [])[:5]) or "重点产业"
+    return (
+        f"用户问题：{keyword or scope + '商机报告'}\n"
+        f"区域范围：{scope}\n"
+        f"重点产业：{industries}\n"
+        f"任务：检索区域商机、HOT客户、关注客户、近期动态、产业机会和客户经理可跟进方向。"
+    )
+
+
+def _format_regional_evidence(retrieved_docs: list[dict], limit: int = 5) -> list[dict]:
+    evidence = []
+    seen = set()
+    for doc in retrieved_docs:
+        metadata = doc.get("metadata") or {}
+        key = (metadata.get("title"), metadata.get("entity_name"), metadata.get("link"))
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence.append({
+            "title": metadata.get("title") or "区域商机",
+            "entity_name": metadata.get("entity_name") or "",
+            "district": metadata.get("district") or "",
+            "industry": metadata.get("industry") or "",
+            "source": metadata.get("source") or "",
+            "link": metadata.get("link") or "",
+            "score": round(float(doc.get("rerank_score", doc.get("final_score", 0.0)) or 0.0), 4),
+        })
+        if len(evidence) >= limit:
+            break
+    return evidence
+
+
+def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list[dict], is_city_report: bool) -> str:
+    base = build_summary_text(region_name, summary, is_city_report=is_city_report)
+    if not evidence:
+        return base
+
+    titles = "、".join([item.get("title") for item in evidence[:3] if item.get("title")])
+    entities = "、".join([item.get("entity_name") for item in evidence[:3] if item.get("entity_name")])
+    if is_city_report:
+        return f"{base} RAG 检索进一步显示，近期较值得关注的商机线索包括{titles or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
+    return f"{base} RAG 检索进一步显示，{region_name}近期较值得关注的线索包括{titles or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
+
+
+def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summary: dict, user_id: int = None) -> dict:
+    documents = _fetch_regional_rag_documents(region_name, is_city_report)
+    if not documents:
+        return {"source_type": "mysql_structured_summary", "evidence": [], "summary": ""}
+
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+    query = _build_regional_rag_query(keyword, region_name, is_city_report, summary)
+
+    try:
+        rag = RAGEngine(documents=documents)
+        retrieved_docs = rag.retrieve(query, top_k=8)
+        if api_key and "your_api_key" not in api_key:
+            retrieved_docs = rag.rerank(query, retrieved_docs, api_key, base_url, model_name)
+        else:
+            for doc in retrieved_docs:
+                doc["rerank_score"] = doc.get("final_score", 0.0)
+        evidence = _format_regional_evidence(retrieved_docs)
+        summary_text = _render_regional_rag_summary(region_name, summary, evidence, is_city_report)
+        db.log_event(user_id, "regional", "INFO", f"区域 RAG 检索完成，证据数: {len(evidence)}")
+        return {"source_type": "mysql_db_bm25_rag", "evidence": evidence, "summary": summary_text}
+    except Exception as exc:
+        db.log_event(user_id, "regional", "WARNING", f"区域 RAG 检索失败，降级结构化摘要: {exc}")
+        return {"source_type": "mysql_structured_summary", "evidence": [], "summary": ""}
+
+
 def handle(keyword: str, user_id: int = None) -> dict:
     """
     根据关键字识别行政区，返回结构化区域商机报告卡片。
@@ -107,6 +241,9 @@ def handle(keyword: str, user_id: int = None) -> dict:
     summary = db.get_articles_summary(None if is_city_report else region_name)
     detail_url = "/ui_1.html" if is_city_report else f"/ui_1.html?district={quote(region_name)}"
     summary_text = build_summary_text(region_name, summary, is_city_report=is_city_report)
+    rag_result = _run_regional_rag(keyword, region_name, is_city_report, summary, user_id=user_id)
+    if rag_result.get("summary"):
+        summary_text = rag_result["summary"]
 
     result = {
         "type": "regional_report",
@@ -128,6 +265,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
             }
         ],
         "metrics": summary,
+        "source_type": rag_result.get("source_type", "mysql_structured_summary"),
+        "evidence": rag_result.get("evidence", []),
     }
 
     db.log_event(user_id, "regional", "INFO", f"{region_name} 区域商机分析卡片生成完毕。")

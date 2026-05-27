@@ -423,13 +423,13 @@ CATERING_KEYWORDS = [
 ]
 
 SCORING_RULES = [
-    ("投资落地", 25, ["企业投资", "投资落地", "落户", "开工", "投产", "入驻", "设立", "总部落地", "新设", "成立", "扩产"]),
-    ("重大签约", 20, ["企业签约", "签约", "战略合作", "合作协议", "签约仪式", "对接", "达成合作"]),
+    ("投资落地", 25, ["企业投资", "投资落地", "落户", "开工", "投产", "入驻", "设立", "总部落地", "新设", "成立", "扩产", "落地"]),
+    ("重大签约", 20, ["企业签约", "签约", "战略合作", "合作协议", "签约仪式", "对接", "达成合作", "合作"]),
     ("领导调研", 15, ["领导走访", "领导", "调研", "考察", "视察", "走访", "座谈", "书记", "区长", "主任"]),
-    ("资本融资", 10, ["企业融资", "融资", "IPO", "上市", "基金", "注资", "增资", "战略投资", "完成融资", "挂牌", "科创板", "港交所", "北交所"]),
-    ("技术突破", 10, ["研发突破", "技术突破", "获奖认证", "首发", "首创", "发布", "研发", "攻克", "创新成果", "首款", "首台", "认证", "获奖", "入选", "荣获", "专精特新", "高新技术企业"]),
+    ("资本融资", 15, ["企业融资", "融资", "IPO", "上市", "基金", "注资", "增资", "战略投资", "完成融资", "挂牌", "科创板", "港交所", "北交所", "收购", "并购", "股权", "领投", "跟投"]),
+    ("技术突破", 15, ["研发突破", "技术突破", "获奖认证", "首发", "首创", "发布", "研发", "攻克", "创新成果", "首款", "首台", "认证", "获奖", "入选", "荣获", "专精特新", "高新技术企业", "小巨人", "瞪羚", "百强"]),
     ("具化数据", 10, ["明确金额", "规模等数据", "金额", "投资额", "融资额", "面积", "产值", "规模", "数量", "亿元", "万元", "平方米", "亩"]),
-    ("会议论坛", 10, ["行业大会", "会议", "论坛", "峰会", "推介会", "发布会", "展会", "博览会", "对接会"]),
+    ("会议论坛", 10, ["行业大会", "会议", "论坛", "峰会", "推介会", "发布会", "展会", "博览会", "对接会", "路演"]),
 ]
 
 EVENT_PRIORITY = ["投资落地", "重大签约", "领导调研", "资本融资", "技术突破", "具化数据", "会议论坛"]
@@ -489,32 +489,41 @@ def calc_article_opportunity_score(row: dict) -> dict:
         }
 
     text_all = "".join([title, abstract, content, scope, topic, ind1, ind2, ind3, ent_nature, other_nature])
-    is_excluded_service_industry = "现代服务业" in text_all or "民生" in text_all or ind1 in ("现代服务业", "民生")
     is_catering = has_any(text_all, CATERING_KEYWORDS)
-    if is_excluded_service_industry and is_catering:
+    if is_catering:
         return {
             "score": 0,
             "decision": "否",
             "level": "不符合采集标准",
             "type": "",
             "region": region,
-            "hit": ["现代服务业/民生", "餐饮行业"],
-            "reason": "现代服务业或民生行业下的餐饮不展示",
+            "hit": ["餐饮行业"],
+            "reason": "餐饮类相关内容不展示",
         }
 
-    score = 0
-    hit = []
+    score = 10
+    hit = ["企业提及"]
     for rule_name, points, keywords in SCORING_RULES:
         if has_any(text_all, keywords):
             score += points
             hit.append(rule_name)
 
+    tag_sg = (row.get("Tag_SG") or "").strip()
+    if tag_sg and "资本融资" not in hit:
+        score += 15
+        hit.append("资本融资")
+
     if (tag_ss == "是" or tag_ipo == "是") and "资本融资" not in hit:
-        score += 10
+        score += 15
         hit.append("资本融资")
     if tag_rz and "资本融资" not in hit:
-        score += 10
+        score += 15
         hit.append("资本融资")
+        
+    if other_nature and not has_any(other_nature, ["非企", "无"]):
+        score += 10
+        if "企业资质" not in hit:
+            hit.append("企业资质")
 
     score = min(score, 100)
     hit = list(dict.fromkeys(hit))
@@ -528,7 +537,7 @@ def calc_article_opportunity_score(row: dict) -> dict:
         decision = "是"
         level = "推荐采集"
         reason = ""
-    elif score >= 30:
+    elif score >= 15:
         decision = "是"
         level = "建议采集"
         reason = ""
@@ -583,7 +592,7 @@ def score_to_display(score: int, level: str) -> tuple[str, str]:
     """将采集优先级映射为前端显示标签和 CSS class。"""
     if level == "推荐采集" or score >= 55:
         return "HOT", "score-red"
-    if level == "建议采集" or score >= 30:
+    if level == "建议采集" or score >= 15:
         return "关注", "score-blue"
     return "不采集", "score-gray"
 
@@ -782,7 +791,7 @@ def get_articles_from_result_table(district: str = None) -> dict:
     if district:
         sql += " AND district = :district"
         params["district"] = district
-    sql += " ORDER BY release_time DESC, score DESC LIMIT 500"
+    sql += " ORDER BY release_time DESC, score DESC LIMIT 50000"
 
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).mappings().all()
@@ -983,6 +992,8 @@ def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_e
         for article in articles:
             release_time_raw = str(article.get("release_time_raw") or "").strip()
             sources = article.get("sources") or []
+            if len(sources) > 15:
+                sources = sources[:15]
             content_hash_raw = "|".join([
                 article.get("ent_name") or "",
                 article.get("title") or "",
@@ -1134,7 +1145,7 @@ def get_articles_summary_fast(district: str) -> dict:
         content = (row.get("content") or "").strip()
         text_all = title + content[:1000]
 
-        score = 0
+        score = 10
         for _, points, keywords in SCORING_RULES:
             if has_any(text_all, keywords):
                 score += points
@@ -1142,7 +1153,7 @@ def get_articles_summary_fast(district: str) -> dict:
 
         if score >= 55:
             hot_count += 1
-        elif score >= 30:
+        elif score >= 15:
             watch_count += 1
 
         for industry in industry_keywords:

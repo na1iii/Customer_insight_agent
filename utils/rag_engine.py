@@ -8,7 +8,7 @@ import re
 import math
 import json
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple, Optional
 from openai import OpenAI
 
 class DocumentChunker:
@@ -114,13 +114,12 @@ class DocumentChunker:
         """
         将内存中的文档字典（包含 title, content, publish_date 等）切分成小的 Child Chunks，并保留 Parent Content。
         """
-        metadata = {
-            "title": doc.get("title") or "未知标题",
-            "publish_date": doc.get("publish_date") or datetime.now().strftime("%Y-%m-%d"),
-            "source": doc.get("source") or "关系型数据库",
-            "link": doc.get("link") or "",
-            "company": doc.get("company") or "doc"
-        }
+        metadata = {k: v for k, v in doc.items() if k != "content"}
+        metadata.setdefault("title", doc.get("title") or "未知标题")
+        metadata.setdefault("publish_date", doc.get("publish_date") or datetime.now().strftime("%Y-%m-%d"))
+        metadata.setdefault("source", doc.get("source") or "关系型数据库")
+        metadata.setdefault("link", doc.get("link") or "")
+        metadata.setdefault("company", doc.get("company") or "doc")
         full_content = doc.get("content") or ""
         if not full_content:
             return []
@@ -256,6 +255,33 @@ class BM25Retriever:
         return results
 
 
+def parse_publish_date(value: Any) -> Optional[datetime]:
+    """兼容解析业务库中常见的日期/时间字段。"""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return None
+    text = text.replace("/", "-").replace(".", "-")
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y年%m月%d日", "%Y年%m月"):
+        try:
+            return datetime.strptime(text[:len(datetime.now().strftime(fmt))] if "%H" in fmt else text, fmt)
+        except Exception:
+            continue
+
+    match = re.search(r"(20\d{2})[-年](\d{1,2})[-月](\d{1,2})", text)
+    if match:
+        try:
+            return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except Exception:
+            return None
+    return None
+
+
 class RAGEngine:
     """
     RAG 核心集成引擎，负责：
@@ -348,12 +374,12 @@ class RAGEngine:
             
             decay_factor = 1.0
             if pub_date_str:
-                try:
-                    pub_date = datetime.strptime(pub_date_str, "%Y-%m-%d")
+                pub_date = parse_publish_date(pub_date_str)
+                if pub_date:
                     days_diff = (now - pub_date).days
                     # 时间衰减公式：e^(-decay_rate * days_diff)
                     decay_factor = math.exp(-decay_rate * max(0, days_diff))
-                except Exception:
+                else:
                     decay_factor = 1.0
             else:
                 decay_factor = 0.8 # 缺省日期罚分
