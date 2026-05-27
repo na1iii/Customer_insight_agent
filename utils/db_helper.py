@@ -9,7 +9,7 @@ import hashlib
 import uuid
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text, Index, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -209,7 +209,7 @@ def get_conversations(user_id: int, scene: str):
                 "id": r.id, 
                 "title": r.title, 
                 "scene": r.scene, 
-                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                "created_at": (r.created_at + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
             } for r in rows
         ]
     finally:
@@ -225,6 +225,22 @@ def delete_conversation(user_id: int, conv_id: str) -> bool:
         ).first()
         if conv:
             db.delete(conv)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def update_conversation_title(conv_id: str, new_title: str) -> bool:
+    """更新会话记录的标题"""
+    db = SessionLocal()
+    try:
+        conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+        if conv:
+            conv.title = new_title
             db.commit()
             return True
         return False

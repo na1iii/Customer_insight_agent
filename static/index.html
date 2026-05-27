@@ -2009,7 +2009,15 @@
             // 更新会话标题为首次提问
             const titleEl = document.getElementById(`title-${activeConversationId}`);
             if (titleEl && titleEl.innerText === "新对话") {
-                titleEl.innerText = text.substring(0, 12);
+                const newTitle = text.substring(0, 12);
+                titleEl.innerText = newTitle;
+                
+                // 同步新标题到后端数据库进行持久化
+                fetch(`/api/conversations/${activeConversationId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle })
+                }).catch(err => console.error("同步标题失败:", err));
             }
 
             inputEl.value = '';
@@ -2076,7 +2084,23 @@
                             const dataStr = trimmed.substring(6);
                             try {
                                 const parsed = JSON.parse(dataStr);
-                                if (parsed.type === 'info') {
+                                if (parsed.type === 'router_start') {
+                                    bubbleEl.innerHTML = `
+                                        <div class="report-generating">
+                                            <div class="generating-header">
+                                                <span class="generating-icon">🧠</span>
+                                                <strong>智能体网关：意图理解与场景路由中...</strong>
+                                            </div>
+                                            <div class="generating-progress-bar">
+                                                <div class="generating-progress-fill" style="width: 40%; background: #6366f1;"></div>
+                                            </div>
+                                            <div class="generating-steps">
+                                                <div class="generating-step active" style="color: #6366f1;">并发调用大语言模型进行业务意图识别与实体抽取...</div>
+                                            </div>
+                                        </div>
+                                    `;
+                                    scrollToBottom();
+                                } else if (parsed.type === 'info') {
                                     const scene = parsed.resolved_scene;
                                     if (scene === 'industry') {
                                         bubbleEl.innerHTML = `

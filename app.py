@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 import asyncio
 import json
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 # 手动载入环境变量的轻量级函数（不依赖 python-dotenv）
 def load_env_file():
@@ -42,7 +44,35 @@ import services.industry as industry
 import services.potential as potential
 import utils.db_helper as db
 
-app = FastAPI(title="AI 客户智能洞察智能体 API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    def init_db():
+        session = db.SessionLocal()
+        try:
+            latest = session.query(db.OpportunityArticle).order_by(db.OpportunityArticle.updated_at.desc()).first()
+            needs_rebuild = False
+            if not latest:
+                print("【System】商机库为空，开始后台静默执行商机数据库梳理...")
+                needs_rebuild = True
+            elif datetime.utcnow() - latest.updated_at > timedelta(hours=24):
+                print("【System】商机库数据已过期（>24小时），开始后台静默执行商机数据库梳理...")
+                needs_rebuild = True
+            else:
+                print("【System】商机库数据是最新的，跳过自动梳理。")
+            
+            if needs_rebuild:
+                db.rebuild_opportunity_articles(limit=500, clear_existing=True)
+                print("【System】后台商机数据库梳理完成！")
+        except Exception as e:
+            print(f"【System】商机数据库梳理发生错误: {e}")
+        finally:
+            session.close()
+
+    # 在独立的后台线程中执行，不阻塞主线程启动
+    asyncio.get_event_loop().run_in_executor(None, init_db)
+    yield
+
+app = FastAPI(title="AI 客户智能洞察智能体 API", lifespan=lifespan)
 
 # 2. 挂载静态文件目录，提供长图、HTML/Excel 文件的本地 HTTP 访问
 static_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -59,6 +89,9 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class UpdateTitleRequest(BaseModel):
+    title: str
 
 class ChatRequest(BaseModel):
     message: str
@@ -104,6 +137,13 @@ async def delete_conversation_endpoint(user_id: int, conv_id: str):
         raise HTTPException(status_code=400, detail="会话不存在或删除失败")
     return {"status": "success"}
 
+@app.put("/api/conversations/{conv_id}")
+async def update_conversation_title_endpoint(conv_id: str, req: UpdateTitleRequest):
+    success = db.update_conversation_title(conv_id, req.title)
+    if not success:
+        raise HTTPException(status_code=400, detail="会话不存在或更新失败")
+    return {"status": "success"}
+
 # 6. 系统运行日志查询接口
 @app.get("/api/system/logs")
 async def get_system_logs_endpoint():
@@ -115,6 +155,9 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
     try:
         # A. 保存用户输入的消息到数据库
         db.save_message(conv_id, "user", user_text)
+        
+        # 立即发送初始状态，避免前端长时间等待
+        yield f"data: {json.dumps({'type': 'router_start'}, ensure_ascii=False)}\n\n"
         
         # B. AI 路由器提取实体与意图 (在线程池中执行以防止阻塞事件循环)
         def run_router():
