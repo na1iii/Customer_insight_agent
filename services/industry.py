@@ -700,6 +700,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
         or keyword in ("全行业", "行业", "行业报告", "生成行业报告", "行业研报") 
         or "行业报告" in str(keyword) 
         or "行业研报" in str(keyword)
+        or "全行业" in str(keyword)
     )
     
     if is_all_industries:

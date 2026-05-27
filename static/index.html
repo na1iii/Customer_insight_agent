@@ -1697,7 +1697,8 @@
         let activeConversationId = null;
         let isRegisterMode = false;
         let showingLogs = false;
-        let activeController = null;
+        const activeControllers = {};
+        const activeStreams = {};
 
         window.addEventListener('DOMContentLoaded', () => {
             const isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
@@ -1879,8 +1880,9 @@
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    activeConversationId = data.id;
+                    activeConversationId = null; // 清除当前状态以绕过 selectConversation 的拦截
                     await fetchConversations();
+                    selectConversation(data.id);
                 }
             } catch (err) {
                 alert("新建会话失败，请检查网络");
@@ -1889,7 +1891,6 @@
 
         async function selectConversation(id) {
             if (activeConversationId === id) return;
-            stopGeneration();
             
             if (showingLogs) {
                 toggleLogsView();
@@ -1919,6 +1920,21 @@
                         }
                     });
                 }
+                
+                if (activeStreams[id]) {
+                    const stream = activeStreams[id];
+                    const container = document.getElementById('messagesContainer');
+                    if (stream.loadingRow) {
+                        container.appendChild(stream.loadingRow);
+                    } else if (stream.bubbleRow) {
+                        container.appendChild(stream.bubbleRow);
+                    }
+                    updateUIState(true);
+                    document.getElementById('stopBtn').style.display = 'flex';
+                } else {
+                    document.getElementById('stopBtn').style.display = 'none';
+                }
+                
                 scrollToBottom();
             } catch (err) {
                 updateUIState(true);
@@ -1973,9 +1989,9 @@
         }
 
         function stopGeneration() {
-            if (activeController) {
-                activeController.abort();
-                activeController = null;
+            if (activeConversationId && activeControllers[activeConversationId]) {
+                activeControllers[activeConversationId].abort();
+                delete activeControllers[activeConversationId];
             }
             document.getElementById('stopBtn').style.display = 'none';
         }
@@ -2035,7 +2051,11 @@
             scrollToBottom();
 
             let bubbleEl = null;
-            activeController = new AbortController();
+            activeControllers[currentConvId] = new AbortController();
+            activeStreams[currentConvId] = {
+                loadingRow: document.getElementById(loadingId),
+                bubbleRow: null
+            };
             document.getElementById('stopBtn').style.display = 'flex';
 
             try {
@@ -2045,24 +2065,32 @@
                     body: JSON.stringify({
                         message: text,
                         scene: 'all',
-                        conversation_id: activeConversationId,
+                        conversation_id: currentConvId,
                         user_id: currentUser.id
                     }),
-                    signal: activeController.signal
+                    signal: activeControllers[currentConvId].signal
                 });
 
                 if (!response.ok) {
                     removeLoading(loadingId);
                     const data = await response.json().catch(() => ({}));
-                    appendBotBubble(`❌ <b>后端处理错误</b>：${data.detail || '服务未正常响应。'}`);
-                    scrollToBottom();
+                    if (activeConversationId === currentConvId) {
+                        appendBotBubble(`❌ <b>后端处理错误</b>：${data.detail || '服务未正常响应。'}`);
+                        scrollToBottom();
+                    }
                     return;
                 }
 
                 // 处理 SSE 流式返回
                 removeLoading(loadingId);
                 bubbleEl = createBotBubblePlaceholder();
-                scrollToBottom();
+                if (activeStreams[currentConvId]) {
+                    activeStreams[currentConvId].loadingRow = null;
+                    activeStreams[currentConvId].bubbleRow = bubbleEl.parentNode;
+                }
+                if (activeConversationId === currentConvId) {
+                    scrollToBottom();
+                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8');
@@ -2082,10 +2110,6 @@
                     buffer = lines.pop();
 
                     for (const line of lines) {
-                        if (activeConversationId !== currentConvId) {
-                            if (activeController) stopGeneration();
-                            return;
-                        }
                         const trimmed = line.trim();
                         if (!trimmed) continue;
 
@@ -2191,19 +2215,35 @@
                                         simulateCustomerSteps(bubbleEl);
                                     }
                                 } else if (parsed.type === 'content') {
+                                    if (!bubbleEl.querySelector('.bubble-content-area')) {
+                                        bubbleEl.innerHTML = '';
+                                        const c = document.createElement('div'); c.className = 'bubble-content-area';
+                                        const p = document.createElement('div'); p.className = 'bubble-payload-area';
+                                        bubbleEl.appendChild(c);
+                                        bubbleEl.appendChild(p);
+                                    }
                                     accumulatedText += parsed.content;
                                     if (!updateScheduled) {
                                         updateScheduled = true;
                                         requestAnimationFrame(() => {
                                             if (bubbleEl) {
-                                                bubbleEl.innerHTML = marked.parse(accumulatedText);
+                                                const c = bubbleEl.querySelector('.bubble-content-area');
+                                                if (c) c.innerHTML = marked.parse(accumulatedText);
                                                 scrollToBottom();
                                             }
                                             updateScheduled = false;
                                         });
                                     }
                                 } else if (parsed.type === 'payload') {
-                                    renderPayload(bubbleEl, parsed.payload);
+                                    if (!bubbleEl.querySelector('.bubble-payload-area')) {
+                                        bubbleEl.innerHTML = '';
+                                        const c = document.createElement('div'); c.className = 'bubble-content-area';
+                                        const p = document.createElement('div'); p.className = 'bubble-payload-area';
+                                        bubbleEl.appendChild(c);
+                                        bubbleEl.appendChild(p);
+                                    }
+                                    const p = bubbleEl.querySelector('.bubble-payload-area');
+                                    renderPayload(p, parsed.payload);
                                     scrollToBottom();
                                 } else if (parsed.type === 'done') {
                                     bubbleEl.dataset.messageId = parsed.message_id;
@@ -2230,10 +2270,26 @@
                         try {
                             const parsed = JSON.parse(dataStr);
                             if (parsed.type === 'content') {
+                                if (!bubbleEl.querySelector('.bubble-content-area')) {
+                                    bubbleEl.innerHTML = '';
+                                    const c = document.createElement('div'); c.className = 'bubble-content-area';
+                                    const p = document.createElement('div'); p.className = 'bubble-payload-area';
+                                    bubbleEl.appendChild(c);
+                                    bubbleEl.appendChild(p);
+                                }
                                 accumulatedText += parsed.content;
-                                bubbleEl.innerHTML = marked.parse(accumulatedText);
+                                const c = bubbleEl.querySelector('.bubble-content-area');
+                                if (c) c.innerHTML = marked.parse(accumulatedText);
                             } else if (parsed.type === 'payload') {
-                                renderPayload(bubbleEl, parsed.payload);
+                                if (!bubbleEl.querySelector('.bubble-payload-area')) {
+                                    bubbleEl.innerHTML = '';
+                                    const c = document.createElement('div'); c.className = 'bubble-content-area';
+                                    const p = document.createElement('div'); p.className = 'bubble-payload-area';
+                                    bubbleEl.appendChild(c);
+                                    bubbleEl.appendChild(p);
+                                }
+                                const p = bubbleEl.querySelector('.bubble-payload-area');
+                                renderPayload(p, parsed.payload);
                             } else if (parsed.type === 'error') {
                                 bubbleEl.innerHTML += `<div style="color:#ef4444;margin-top:10px;">❌ <b>流式处理错误</b>：${parsed.message}</div>`;
                             }
@@ -2244,21 +2300,23 @@
                 }
 
             } catch (err) {
-                if (activeConversationId !== currentConvId) return;
                 removeLoading(loadingId);
                 if (err.name === 'AbortError') {
                     if (bubbleEl) {
                         bubbleEl.innerHTML += `<div style="color:var(--text-secondary);font-size:12.5px;margin-top:10px;font-style:italic;">⏹️ 已由用户停止生成。</div>`;
-                    } else {
+                    } else if (activeConversationId === currentConvId) {
                         appendBotBubble(`⏹️ 已由用户停止生成。`);
                     }
                 } else {
-                    appendBotBubble(`❌ <b>连接失败</b>：后端服务异常或响应超时。`);
+                    if (activeConversationId === currentConvId) appendBotBubble(`❌ <b>连接失败</b>：后端服务异常或响应超时。`);
                 }
-                scrollToBottom();
+                if (activeConversationId === currentConvId) scrollToBottom();
             } finally {
-                activeController = null;
-                document.getElementById('stopBtn').style.display = 'none';
+                delete activeControllers[currentConvId];
+                delete activeStreams[currentConvId];
+                if (activeConversationId === currentConvId) {
+                    document.getElementById('stopBtn').style.display = 'none';
+                }
             }
         }
 
@@ -2306,9 +2364,17 @@
 
         function appendBotBubble(text, payload = null) {
             const bubble = createBotBubblePlaceholder();
-            bubble.innerHTML = marked.parse(text);
             if (payload) {
-                renderPayload(bubble, payload);
+                const c = document.createElement('div');
+                c.className = 'bubble-content-area';
+                c.innerHTML = marked.parse(text);
+                const p = document.createElement('div');
+                p.className = 'bubble-payload-area';
+                bubble.appendChild(c);
+                bubble.appendChild(p);
+                renderPayload(p, payload);
+            } else {
+                bubble.innerHTML = marked.parse(text);
             }
         }
 

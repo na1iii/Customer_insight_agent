@@ -42,8 +42,8 @@ def get_intent_router(user_input: str) -> TaskCommand:
         
         # 0. 上海市/全市商机报告意图：展示 16 个区的汇总明细
         if any(w in text_lower for w in ["上海市", "全上海", "全市", "上海"]) and any(w in text_lower for w in ["报告", "商机", "区域", "明细"]):
-            # 如果文本中同时包含特定行业，则不判定为区域报告
-            if not any(ind in text_lower for ind in industries):
+            # 如果文本中同时包含特定行业，或者明确要求“行业报告”，则不判定为区域报告
+            if not any(ind in text_lower for ind in industries) and "行业报告" not in text_lower and "行业研报" not in text_lower:
                 return TaskCommand(intent="regional_report", keyword="上海市")
 
         # 1. 高潜客户意图：优先于区域报告，避免“推荐静安区高潜客户”被误判为区域分析
@@ -69,8 +69,8 @@ def get_intent_router(user_input: str) -> TaskCommand:
         # 2. 区级报告意图
         for r in ["静安", "浦东", "黄浦", "徐汇", "长宁", "普陀", "虹口", "杨浦"]:
             if r in text_lower and any(w in text_lower for w in ["区", "报告", "图表", "画像", "商机"]):
-                # 如果包含具体行业关键字，则不判断为区级报告
-                if not any(ind in text_lower for ind in industries):
+                # 如果包含具体行业关键字，或明确要求“行业报告”，则不判断为区级报告
+                if not any(ind in text_lower for ind in industries) and "行业报告" not in text_lower and "行业研报" not in text_lower:
                     suffix = "新区" if r == "浦东" else "区"
                     return TaskCommand(intent="regional_report", keyword=f"{r}{suffix}")
                 
@@ -136,14 +136,14 @@ def get_intent_router(user_input: str) -> TaskCommand:
             "1. 'intent': 必须是以下四个之一:\n"
             "   - 'query_customer' (当用户询问某具体公司/客户的概况、画像、怎么样、痛点时，例如：'莉莉丝游戏怎么样'、'米哈游的情况'、'特斯拉介绍')\n"
             "   - 'regional_report' (当用户要查看某行政区的经济指标、图表、长图或区级报告时。注意：仅限于无特定行业属性的区域宏观报告，如'上海市商机报告'、'静安区区域报告')\n"
-            "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或说'生成行业报告'、'帮我发行业报告'时。注意：若输入同时包含地区和具体行业，如'上海市建筑业报告'、'静安区人工智能行业研报'，这属于行业分析，intent 应为 industry_report，keyword 应提取出对应的行业如'建筑行业'、'人工智能行业')\n"
+            "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或明确包含'行业报告'、'行业研报'字眼时。注意：无论输入中是否包含行政区名，只要有'行业报告'或'行业研报'，intent 必须为 industry_report。如果没有指明具体行业（如'静安区行业报告'、'上海市行业报告'），则 keyword 返回 '全行业'；如果指明了具体行业（如'静安区人工智能行业研报'），则 keyword 提取出具体行业，如 '人工智能行业')\n"
             "   - 'high_potential' (当用户要求查看高潜客户、重点客户、潜在客户、推荐名单、展示客户表格、线索或导出 Excel 时)\n"
             "2. 'keyword': 提取的主体名称，如公司名（如莉莉丝游戏、上海电信）、行政区（如静安区、上海市）、行业（如通信行业）。"
             "如果用户说'上海市商机报告'或'全市商机报告'，keyword 应返回 '上海市'。"
             "如果用户说'推荐静安区人工智能高潜客户'，keyword 应返回 '静安区 人工智能'。"
-            "如果用户说'生成行业报告'或'帮我发行业报告'，intent 为 industry_report，keyword 返回 '全行业'。"
+            "如果用户明确要求生成'行业报告'或'行业研报'（例如'生成行业报告'、'静安区行业报告'、'上海市行业研报'），且没有具体指明行业类别，intent 必须为 industry_report，keyword 返回 '全行业'。"
             "如果没有提取到则为 null。\n\n"
-            "注意：高潜、重点客户、客户名单、线索、导出 Excel 的意图优先级高于区域报告；上海市/全市商机报告属于 regional_report；你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
+            "注意：高潜、重点客户、客户名单、线索、导出 Excel 的意图优先级高于区域报告；只要包含'行业报告'或'行业研报'无论是否带区名均属于 industry_report；上海市/全市商机报告属于 regional_report；你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
         )
         
         response = client.chat.completions.create(

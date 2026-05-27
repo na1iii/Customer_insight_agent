@@ -655,10 +655,10 @@ def _fallback_from_mock(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
     return items[:limit] or []
 
 
-def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> List[Dict[str, Any]]:
+def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, skip_rag: bool = False) -> List[Dict[str, Any]]:
     try:
         candidates = fetch_candidate_enterprises(filters)
-        company_rag = _run_potential_rag(filters, candidates)
+        company_rag = {} if skip_rag else _run_potential_rag(filters, candidates)
         recommendations = []
         ranked_all = []
         score_min = int(filters.get("score_min") or DEFAULT_SCORE_MIN)
@@ -680,6 +680,10 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
             if int(normalized.get("score") or 0) >= score_min:
                 recommendations.append(normalized)
 
+        if skip_rag:
+            ranked_all.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
+            return ranked_all[:limit]
+
         recommendations.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
         if recommendations:
             return recommendations[:limit]
@@ -694,6 +698,59 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
         import utils.db_helper as db
         db.log_event(None, "potential", "ERROR", f"高潜客户数据库检索失败，启用兜底数据: {exc}", traceback.format_exc())
         return _fallback_from_mock(filters, limit=limit)
+
+
+
+def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    static_dir = os.path.join(base_dir, "static", "generated")
+    ensure_dir(static_dir)
+
+    safe_scope = re.sub(r"[\\/:*?\"<>|\s]+", "_", safe_scope)[:30]
+    filename = f"high_potential_{safe_scope}_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}.xlsx"
+    excel_path = os.path.join(static_dir, filename)
+
+    if items:
+        df = pd.DataFrame(items)
+        df_excel = df.rename(columns={
+            "name": "企业名称",
+            "short_name": "企业简称",
+            "region": "行政区",
+            "industry": "行业",
+            "score": "推荐评分",
+            "level": "推荐等级",
+            "signals": "命中信号",
+            "reason": "推荐理由",
+            "next_action": "下一步动作",
+            "account_manager": "客户经理",
+            "qualification": "资质名称",
+            "ranking_name": "榜单名称",
+            "ranking_type": "榜单类型",
+            "revenue_2024": "2024年营业收入（万元）",
+            "growth_rate": "营业收入增长率",
+            "subsidy_amount": "补贴金额万元",
+            "subsidy_rule": "补贴金额规则",
+            "is_new_hope_customer": "是否入选新希望客户",
+            "latest_title": "最新动态标题",
+            "latest_date": "最新动态日期",
+            "link": "新闻原文链接",
+            "ranking_link": "榜单原文链接",
+        })
+        if "命中信号" in df_excel.columns:
+            df_excel["命中信号"] = df_excel["命中信号"].apply(lambda value: "、".join(value) if isinstance(value, list) else value)
+        keep_columns = [
+            "企业名称", "企业简称", "行政区", "行业", "推荐评分", "推荐等级", "命中信号", "推荐理由",
+            "下一步动作", "客户经理", "资质名称", "榜单名称", "榜单类型", "2024年营业收入（万元）",
+            "营业收入增长率", "补贴金额万元", "补贴金额规则", "是否入选新希望客户",
+            "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
+        ]
+        df_excel = df_excel[[column for column in keep_columns if column in df_excel.columns]]
+    else:
+        df_excel = pd.DataFrame([{"提示": "暂无符合条件的高潜客户"}])
+
+    df_excel.to_excel(excel_path, index=False)
+    _apply_excel_hyperlinks(excel_path, ["新闻原文链接", "榜单原文链接"])
+    return excel_path
 
 
 def _build_export_url(filters: Dict[str, Any]) -> str:
@@ -730,10 +787,15 @@ def handle(keyword: str, user_id: int = None) -> dict:
 
     actions = []
     if items:
+        safe_scope = filters.get("district") or filters.get("industry") or filters.get("keyword") or "全市"
+        import os
+        excel_path = write_items_to_excel(items, safe_scope)
+        excel_url = f"/static/generated/{os.path.basename(excel_path)}"
+        
         actions.append({
             "label": "导出高潜客户 Excel",
             "type": "download",
-            "url": _build_export_url(filters),
+            "url": excel_url,
         })
 
     payload = {
@@ -793,56 +855,9 @@ def export_excel(
         filters["keyword"] = keyword
     filters["score_min"] = score_min
 
-    items = get_recommendations(filters, limit=500)
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    static_dir = os.path.join(base_dir, "static", "generated")
-    ensure_dir(static_dir)
+    items = get_recommendations(filters, limit=500, skip_rag=True)
 
     safe_scope = district or industry or keyword or "全市"
-    safe_scope = re.sub(r"[\\/:*?\"<>|\s]+", "_", safe_scope)[:30]
-    filename = f"high_potential_{safe_scope}_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}.xlsx"
-    excel_path = os.path.join(static_dir, filename)
-
-    if items:
-        df = pd.DataFrame(items)
-        df_excel = df.rename(columns={
-            "name": "企业名称",
-            "short_name": "企业简称",
-            "region": "行政区",
-            "industry": "行业",
-            "score": "推荐评分",
-            "level": "推荐等级",
-            "signals": "命中信号",
-            "reason": "推荐理由",
-            "next_action": "下一步动作",
-            "account_manager": "客户经理",
-            "qualification": "资质名称",
-            "ranking_name": "榜单名称",
-            "ranking_type": "榜单类型",
-            "revenue_2024": "2024年营业收入（万元）",
-            "growth_rate": "营业收入增长率",
-            "subsidy_amount": "补贴金额万元",
-            "subsidy_rule": "补贴金额规则",
-            "is_new_hope_customer": "是否入选新希望客户",
-            "latest_title": "最新动态标题",
-            "latest_date": "最新动态日期",
-            "link": "新闻原文链接",
-            "ranking_link": "榜单原文链接",
-        })
-        if "命中信号" in df_excel.columns:
-            df_excel["命中信号"] = df_excel["命中信号"].apply(lambda value: "、".join(value) if isinstance(value, list) else value)
-        keep_columns = [
-            "企业名称", "企业简称", "行政区", "行业", "推荐评分", "推荐等级", "命中信号", "推荐理由",
-            "下一步动作", "客户经理", "资质名称", "榜单名称", "榜单类型", "2024年营业收入（万元）",
-            "营业收入增长率", "补贴金额万元", "补贴金额规则", "是否入选新希望客户",
-            "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
-        ]
-        df_excel = df_excel[[column for column in keep_columns if column in df_excel.columns]]
-    else:
-        df_excel = pd.DataFrame([{"提示": "暂无符合条件的高潜客户"}])
-
-    df_excel.to_excel(excel_path, index=False)
-    _apply_excel_hyperlinks(excel_path, ["新闻原文链接", "榜单原文链接"])
+    excel_path = write_items_to_excel(items, safe_scope)
     db.log_event(user_id, "potential", "INFO", f"高潜客户 Excel 导出成功: {excel_path}")
     return excel_path
