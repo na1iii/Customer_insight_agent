@@ -13,6 +13,29 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text, Index, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+# 初始化 Elasticsearch 客户端 (忽略 SSL 自签名证书警告)
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from elasticsearch import Elasticsearch
+
+ES_HOST = os.getenv("ES_HOST", "")
+ES_USER = os.getenv("ES_USER", "")
+ES_PASSWORD = os.getenv("ES_PASSWORD", "")
+ES_INDEX = os.getenv("ES_INDEX", "customer_insight_agent_logs")
+
+es_client = None
+if ES_HOST:
+    try:
+        auth = (ES_USER, ES_PASSWORD) if ES_USER and ES_PASSWORD else None
+        es_client = Elasticsearch(
+            ES_HOST,
+            basic_auth=auth,
+            verify_certs=False, # 本地自签名证书默认为 False
+            ssl_show_warn=False
+        )
+    except Exception as es_init_err:
+        print(f"【Elasticsearch Warning】初始化 ES 客户端失败: {es_init_err}")
+
 # 1. 动态加载连接配置
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
@@ -307,7 +330,7 @@ def get_messages(conv_id: str):
         db.close()
 
 def log_event(user_id: int, scene: str, level: str, message: str, details: str = None) -> bool:
-    """系统业务运行日志落库，同时同步打印到标准控制台"""
+    """系统业务运行日志落库，同时同步打印到标准控制台并上传至 Elasticsearch"""
     try:
         print(f"【System Log】【{level}】{message} | 详情: {details or ''}")
     except Exception:
@@ -318,6 +341,24 @@ def log_event(user_id: int, scene: str, level: str, message: str, details: str =
         except Exception:
             pass
 
+    # ES 写入
+    es_success = False
+    if es_client:
+        try:
+            doc = {
+                "user_id": user_id,
+                "scene": scene,
+                "level": level,
+                "message": message,
+                "details": details,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            es_client.index(index=ES_INDEX, document=doc)
+            es_success = True
+        except Exception as e:
+            print(f"【System Log Error】写入 ES 失败: {e}")
+
+    # 兜底/双写写入 SQL 数据库
     db = None
     try:
         db = SessionLocal()
@@ -332,13 +373,13 @@ def log_event(user_id: int, scene: str, level: str, message: str, details: str =
         db.commit()
         return True
     except Exception as e:
-        print(f"【System Log Error】写入日志表失败: {e}")
+        print(f"【System Log Error】写入本地日志表失败: {e}")
         if db:
             try:
                 db.rollback()
             except Exception as rollback_err:
                 print(f"【System Log Rollback Error】回滚失败: {rollback_err}")
-        return False
+        return es_success
     finally:
         if db:
             try:
@@ -347,7 +388,42 @@ def log_event(user_id: int, scene: str, level: str, message: str, details: str =
                 print(f"【System Log Close Error】关闭失败: {close_err}")
 
 def get_logs(limit: int = 60):
-    """获取最新的系统运行日志"""
+    """获取最新的系统运行日志，优先从 ES 查询，如果失败或未配置则从 SQL 数据库查询"""
+    if es_client:
+        try:
+            # 检查索引是否存在，如果不存在先不报错直接返回空
+            if es_client.indices.exists(index=ES_INDEX):
+                res = es_client.search(
+                    index=ES_INDEX,
+                    query={"match_all": {}},
+                    sort=[{"timestamp": {"order": "desc"}}],
+                    size=limit
+                )
+                logs = []
+                for hit in res['hits']['hits']:
+                    source = hit['_source']
+                    ts_str = source.get("timestamp", "")
+                    try:
+                        # 格式化展示时间，去除 Z 或毫秒并转为北京时间格式显示
+                        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        ts_display = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        ts_display = ts_str
+                    
+                    logs.append({
+                        "id": hit.get('_id', ''),
+                        "user_id": source.get("user_id"),
+                        "scene": source.get("scene"),
+                        "level": source.get("level"),
+                        "message": source.get("message"),
+                        "details": source.get("details"),
+                        "timestamp": ts_display
+                    })
+                return logs
+        except Exception as e:
+            print(f"【System Log Error】从 ES 读取日志失败，将使用本地数据库兜底: {e}")
+
+    # 兜底查询关系型数据库
     db = SessionLocal()
     try:
         rows = db.query(SystemLog).order_by(SystemLog.timestamp.desc()).limit(limit).all()
