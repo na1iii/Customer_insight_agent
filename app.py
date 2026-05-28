@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
                 print("【System】商机库数据是最新的，跳过自动梳理。")
             
             if needs_rebuild:
-                db.rebuild_opportunity_articles(limit=500, clear_existing=True)
+                db.rebuild_opportunity_articles(limit=50000, clear_existing=False)
                 print("【System】后台商机数据库梳理完成！")
         except Exception as e:
             print(f"【System】商机数据库梳理发生错误: {e}")

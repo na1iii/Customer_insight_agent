@@ -59,6 +59,12 @@ DB_PASSWORD="your_password"
 DB_NAME="zq_ai"
 DB_CHARSET="utf8mb4"
 DATABASE_URL="mysql+pymysql://root:your_password@127.0.0.1:3306/zq_ai?charset=utf8mb4"
+
+# Elasticsearch 日志存储配置 (可选)
+ES_HOST="https://your-es-endpoint:9200"
+ES_USER="elastic"
+ES_PASSWORD="your_es_password"
+ES_INDEX="customer_insight_agent_logs"
 ```
 *(注：如果未配置 API Key，系统内置了强大的本地字典树回退路由引擎（Fallback Parser），依然可以完成大部分基本演示流程。)*
 
