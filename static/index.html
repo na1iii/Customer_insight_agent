@@ -2119,17 +2119,13 @@
                                 const parsed = JSON.parse(dataStr);
                                 if (parsed.type === 'router_start') {
                                     bubbleEl.innerHTML = `
-                                        <div class="report-generating">
-                                            <div class="generating-header">
-                                                <span class="generating-icon">🧠</span>
-                                                <strong>智能体网关：意图理解与场景路由中...</strong>
-                                            </div>
-                                            <div class="generating-progress-bar">
-                                                <div class="generating-progress-fill" style="width: 40%; background: #6366f1;"></div>
-                                            </div>
-                                            <div class="generating-steps">
-                                                <div class="generating-step active" style="color: #6366f1;">并发调用大语言模型进行业务意图识别与实体抽取...</div>
-                                            </div>
+                                        <div class="thinking-indicator" style="color: var(--text-secondary); font-style: italic; display: flex; align-items: center; gap: 8px;">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="var(--accent-primary)">
+                                                <circle cx="4" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.1"/></circle>
+                                                <circle cx="12" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.2"/></circle>
+                                                <circle cx="20" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.3"/></circle>
+                                            </svg>
+                                            正在思考...
                                         </div>
                                     `;
                                     scrollToBottom();
@@ -2213,6 +2209,19 @@
                                         `;
                                         scrollToBottom();
                                         simulateCustomerSteps(bubbleEl);
+                                    } else if (scene === 'general_chat') {
+                                        // 清除智能体网关 UI，直接进入流式等待（展示打字机/思考中）
+                                        bubbleEl.innerHTML = `
+                                            <div class="thinking-indicator" style="color: var(--text-secondary); font-style: italic; display: flex; align-items: center; gap: 8px;">
+                                                <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="var(--accent-primary)">
+                                                    <circle cx="4" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.1"/></circle>
+                                                    <circle cx="12" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.2"/></circle>
+                                                    <circle cx="20" cy="12" r="3"><animate attributeName="opacity" dur="1s" values="0;1;0" repeatCount="indefinite" begin="0.3"/></circle>
+                                                </svg>
+                                                正在思考...
+                                            </div>
+                                        `;
+                                        scrollToBottom();
                                     }
                                 } else if (parsed.type === 'content') {
                                     if (!bubbleEl.querySelector('.bubble-content-area')) {

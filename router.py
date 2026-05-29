@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 
 class TaskCommand(BaseModel):
-    intent: Literal["query_customer", "regional_report", "industry_report", "high_potential"] = Field(
+    intent: Literal["query_customer", "regional_report", "industry_report", "high_potential", "general_chat"] = Field(
         description="判断用户想进入的子业务场景"
     )
-    keyword: Optional[str] = Field(None, description="提取主体名称。如公司名（上海电信）、行政区（静安区）、行业名（通信行业）")
+    keyword: Optional[str] = Field(None, description="提取主体名称。如公司名（上海电信）、行政区（静安区）、行业名（通信行业）。对于general_chat，可以直接放入用户的关键实体或空着")
 
 def get_intent_router(user_input: str) -> TaskCommand:
     """
@@ -117,7 +117,7 @@ def get_intent_router(user_input: str) -> TaskCommand:
             return TaskCommand(intent="query_customer", keyword=text_lower.strip())
                 
         # 最终兜底
-        return TaskCommand(intent="query_customer", keyword="上海电信")
+        return TaskCommand(intent="general_chat", keyword=text)
 
     # 如果没有配置 API KEY，直接执行本地兜底
     if not api_key or "your_api_key" in api_key:
@@ -133,17 +133,15 @@ def get_intent_router(user_input: str) -> TaskCommand:
         system_prompt = (
             "你是一个严谨的业务路由专家。分析用户的输入，判断意图并提取核心实体，以标准的 JSON 格式返回。\n"
             "返回的 JSON 必须且只能包含以下两个字段：\n"
-            "1. 'intent': 必须是以下四个之一:\n"
+            "1. 'intent': 必须是以下五个之一:\n"
             "   - 'query_customer' (当用户询问某具体公司/客户的概况、画像、怎么样、痛点时，例如：'莉莉丝游戏怎么样'、'米哈游的情况'、'特斯拉介绍')\n"
             "   - 'regional_report' (当用户要查看某行政区的经济指标、图表、长图或区级报告时。注意：仅限于无特定行业属性的区域宏观报告，如'上海市商机报告'、'静安区区域报告')\n"
-            "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或明确包含'行业报告'、'行业研报'字眼时。注意：无论输入中是否包含行政区名，只要有'行业报告'或'行业研报'，intent 必须为 industry_report。如果没有指明具体行业（如'静安区行业报告'、'上海市行业报告'），则 keyword 返回 '全行业'；如果指明了具体行业（如'静安区人工智能行业研报'），则 keyword 提取出具体行业，如 '人工智能行业')\n"
+            "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或明确包含'行业报告'、'行业研报'字眼时。)\n"
             "   - 'high_potential' (当用户要求查看高潜客户、重点客户、潜在客户、推荐名单、展示客户表格、线索或导出 Excel 时)\n"
-            "2. 'keyword': 提取的主体名称，如公司名（如莉莉丝游戏、上海电信）、行政区（如静安区、上海市）、行业（如通信行业）。"
-            "如果用户说'上海市商机报告'或'全市商机报告'，keyword 应返回 '上海市'。"
-            "如果用户说'推荐静安区人工智能高潜客户'，keyword 应返回 '静安区 人工智能'。"
-            "如果用户明确要求生成'行业报告'或'行业研报'（例如'生成行业报告'、'静安区行业报告'、'上海市行业研报'），且没有具体指明行业类别，intent 必须为 industry_report，keyword 返回 '全行业'。"
-            "如果没有提取到则为 null。\n\n"
-            "注意：高潜、重点客户、客户名单、线索、导出 Excel 的意图优先级高于区域报告；只要包含'行业报告'或'行业研报'无论是否带区名均属于 industry_report；上海市/全市商机报告属于 regional_report；你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
+            "   - 'general_chat' (当用户进行通用聊天、问候、跨行业对比、分析建议、询问业务策略、比较两个行业、为什么、怎么办等非具体报表查询的灵活开放性提问时)\n"
+            "2. 'keyword': 提取的主体名称，如公司名（如莉莉丝游戏、上海电信）、行政区（如静安区）、行业（如通信行业）。"
+            "如果是 general_chat，请将用户提问中包含的实体（如'新能源'、'人工智能'等）作为 keyword 返回，没有则为 null。\n\n"
+            "注意：你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
         )
         
         response = client.chat.completions.create(

@@ -42,6 +42,7 @@ import services.customer as customer
 import services.regional as regional
 import services.industry as industry
 import services.potential as potential
+import services.general_chat as general_chat
 import utils.db_helper as db
 
 @asynccontextmanager
@@ -177,8 +178,10 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
                 resolved_scene = "industry"
             elif intent == "high_potential":
                 resolved_scene = "potential"
+            elif intent == "general_chat":
+                resolved_scene = "general_chat"
             else:
-                resolved_scene = "customer"
+                resolved_scene = "general_chat"
         
         # 发送意图解析首包
         yield f"data: {json.dumps({'type': 'info', 'resolved_scene': resolved_scene}, ensure_ascii=False)}\n\n"
@@ -196,6 +199,14 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
                 yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
             
             db.log_event(user_id, resolved_scene, "INFO", f"画像查询成功，已流式输出 Markdown 报告。")
+            
+        elif resolved_scene == "general_chat":
+            # 通用问答流式输出
+            async for chunk in general_chat.handle_stream(user_text, user_id=user_id):
+                msg_content += chunk
+                yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
+                
+            db.log_event(user_id, resolved_scene, "INFO", f"通用对话查询成功，已流式输出解答。")
             
         else:
             # 其它场景 (regional, industry, potential) 的处理
