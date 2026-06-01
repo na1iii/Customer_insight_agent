@@ -8,6 +8,8 @@ import os
 import hashlib
 import uuid
 import json
+import asyncio
+from openai import AsyncOpenAI
 from collections import Counter
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text, Index, UniqueConstraint
@@ -943,12 +945,37 @@ def get_articles_from_result_table(district: str = None) -> dict:
     return {"date": get_today_display(), "total_count": total_count, "group_count": len(groups), "groups": groups}
 
 def get_articles_live(district: str = None, limit: int = 500) -> dict:
-    """旧版实时计算逻辑，仅供后台构建或应急调试使用；不要绑定在线页面接口。"""
+    """旧版实时计算逻辑，现已重构为大模型判别逻辑（供后台构建或应急调试使用）。"""
     rows = fetch_article_rows(limit=limit, district=district)
+    
+    # 策略3：在此处增加过滤逻辑，若文章已被处理过，就不再交由大模型判别
+    existing_links = set()
+    try:
+        with SessionLocal() as session:
+            for r in session.query(OpportunityArticle).all():
+                if r.link:
+                    existing_links.add(r.link)
+                if r.sources:
+                    try:
+                        srcs = json.loads(r.sources)
+                        for s in srcs:
+                            if s.get("link"): existing_links.add(s["link"])
+                    except:
+                        pass
+    except Exception as e:
+        print("【Warning】获取已有链接失败，跳过过滤。")
+        
+    filtered_rows = [r for r in rows if r.get("link") not in existing_links]
+    print(f"【Optimization】总计获取 {len(rows)} 条，其中 {len(existing_links)} 条已存在，需要 LLM 处理的增量条数为 {len(filtered_rows)} 条。")
+    
+    # 使用大模型并发判别所有新闻商机
+    judgements = asyncio.run(_async_batch_llm_judge(filtered_rows))
+    
+    # 将 judgements 和已跳过的 row 补齐，但为了简单起见，既然已跳过，它就说明已经入库了，
+    # 本次任务仅处理新产生的数据并生成增量记录写入 DB。前端会直接从 DB 读，所以这块没问题。
     companies_dict = {}
 
-    for row in rows:
-        score_info = calc_article_opportunity_score(row)
+    for row, score_info in zip(filtered_rows, judgements):
         if score_info["decision"] != "是":
             continue
         if district and score_info["region"] != district:
@@ -995,6 +1022,7 @@ def get_articles_live(district: str = None, limit: int = 500) -> dict:
                 "sort_group": score_info["region"] or "其他",
                 "sources": [source_item],
                 "display_tags": extract_article_display_tags(row),
+                "reason": score_info.get("reason", ""),
             }
             continue
 
@@ -1065,7 +1093,7 @@ def get_articles_live(district: str = None, limit: int = 500) -> dict:
         "groups": groups,
     }
 
-def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_existing: bool = True) -> dict:
+def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_existing: bool = False) -> dict:
     """后台构建商机预计算结果表，供定时任务/手动刷新调用。"""
     live_data = get_articles_live(district=district, limit=limit)
     articles = []
@@ -1080,6 +1108,9 @@ def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_e
             if district:
                 query = query.filter(OpportunityArticle.district == district)
             query.delete(synchronize_session=False)
+            session.commit()
+            
+        existing_uids = {r[0] for r in session.query(OpportunityArticle.article_uid).all()}
 
         for article in articles:
             release_time_raw = str(article.get("release_time_raw") or "").strip()
@@ -1093,8 +1124,13 @@ def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_e
                 release_time_raw,
                 json.dumps(sources, ensure_ascii=False, sort_keys=True),
             ])
+            article_uid = hashlib.sha256(((article.get("link") or article.get("title") or article.get("ent_name") or "") + release_time_raw).encode("utf-8")).hexdigest()[:32]
+            
+            if article_uid in existing_uids:
+                continue
+                
             record = OpportunityArticle(
-                article_uid=hashlib.sha256(((article.get("link") or article.get("title") or article.get("ent_name") or "") + release_time_raw).encode("utf-8")).hexdigest()[:32],
+                article_uid=article_uid,
                 source_type="aggregated",
                 source_name=article.get("source_name") or "其他",
                 title=article.get("title") or "",
@@ -1112,10 +1148,150 @@ def rebuild_opportunity_articles(district: str = None, limit: int = 500, clear_e
                 sources=json.dumps(sources, ensure_ascii=False),
                 content_hash=hashlib.sha256(content_hash_raw.encode("utf-8")).hexdigest(),
                 is_valid=1,
-                noise_reason="",
+                noise_reason=article.get("reason") or "",
             )
             session.add(record)
         session.commit()
+        
+    return {
+        "status": "success",
+        "district": district,
+        "count": len(articles),
+        "group_count": live_data.get("group_count", 0),
+    }
+
+async def _async_batch_llm_judge(rows: list) -> list:
+    """批量异步使用大模型提取新闻商机标签与推荐理由"""
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+    
+    if not api_key or "your_api_key" in api_key:
+        print("【System】未配置有效的 API_KEY，降级为正则表达式商机打分。")
+        return [calc_article_opportunity_score(row) for row in rows]
+        
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    sem = asyncio.Semaphore(15) 
+    
+    final_results = [None] * len(rows)
+    filtered_batch_items = []
+    
+    noise_keywords = ["党建", "走访慰问", "暖心驿站", "警务", "社区活动", "核酸", "志愿服务"]
+    
+    for idx, row in enumerate(rows):
+        title = (row.get("title") or "").strip()
+        abstract = (row.get("Abstract") or "").strip()
+        content = (row.get("content") or "").strip()
+        ent_name = (row.get("EntName") or row.get("EntShortName") or "").strip()
+        region = detect_article_region(row)
+        
+        default_res = {
+            "score": 0, "decision": "否", "level": "不符合采集标准",
+            "type": "", "region": region, "hit": [], "reason": ""
+        }
+        
+        text_all = title + " " + abstract + " " + content[:800]
+        
+        if not ent_name or row.get("EnterpriseNature") == "非企":
+            default_res["reason"] = "未涉及具体企业或属于非企"
+            final_results[idx] = default_res
+            continue
+            
+        if has_any(text_all, noise_keywords) or has_any(text_all, CATERING_KEYWORDS):
+            default_res["reason"] = "属于非核心关注内容(政务/党建/餐饮等)"
+            final_results[idx] = default_res
+            continue
+            
+        filtered_batch_items.append((idx, row))
+        
+    batch_size = 10
+    batches = [filtered_batch_items[i:i + batch_size] for i in range(0, len(filtered_batch_items), batch_size)]
+    
+    async def process_batch(batch_tuple):
+        batch_idxs = [b[0] for b in batch_tuple]
+        batch = [b[1] for b in batch_tuple]
+        
+        async with sem:
+            batch_text = ""
+            for i, row in enumerate(batch):
+                t = (row.get("title") or "").strip()
+                e = (row.get("EntName") or row.get("EntShortName") or "").strip()
+                c = (row.get("content") or "").strip()
+                batch_text += f"\\n[ID: {i}] 企业: {e} | 标题: {t} | 内容: {c[:250]}"
+                
+            prompt = f"""
+你是一个专业的政企大客户销售商机挖掘专家。请分析以下 {len(batch)} 篇新闻是否包含真正对通信运营商有价值的【企业商机】。
+请忽略【暖心驿站、志愿服务、党建、仅为新闻来源】的内容。
+
+{batch_text}
+
+请严格返回一个 JSON 对象，包含一个名为 `results` 的数组，数组长度必须严格等于 {len(batch)}。对应顺序不可改变。
+格式示例：
+{{
+  "results": [
+    {{
+      "is_valid": true,
+      "tags": ["重大签约", "业务扩张"],
+      "score": 85,
+      "reason": "企业签约大单，有明确扩张倾向。"
+    }}
+  ]
+}}
+- is_valid: 若无商业价值为 false
+- tags: 从 ["投资落地", "重大签约", "资本融资", "技术突破", "高管调研", "具化数据", "业务扩张", "企业资质"] 中选择
+- score: 0到100
+"""
+            for attempt in range(4):
+                try:
+                    resp = await client.chat.completions.create(
+                        model=model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                        timeout=30.0
+                    )
+                    content = resp.choices[0].message.content
+                    res_json = json.loads(content)
+                    items = res_json.get("results", [])
+                    if len(items) != len(batch):
+                        raise ValueError(f"Length mismatch: {len(items)} vs {len(batch)}")
+                        
+                    results = []
+                    for i, item in enumerate(items):
+                        is_valid = item.get("is_valid", False)
+                        score = item.get("score", 0)
+                        tags = item.get("tags", [])
+                        reason = item.get("reason", "")
+                        region = detect_article_region(batch[i])
+                        
+                        if is_valid and score >= 15:
+                            level = "推荐采集" if score >= 55 else "建议采集"
+                            results.append({
+                                "score": score, "decision": "是", "level": level,
+                                "type": tags[0] if tags else "其他商机", "region": region,
+                                "hit": tags, "reason": reason
+                            })
+                        else:
+                            results.append({
+                                "score": 0, "decision": "否", "level": "不符合采集标准",
+                                "type": "", "region": region, "hit": [], "reason": reason or "大模型判定非有效商机"
+                            })
+                    return (batch_idxs, results)
+                except Exception as e:
+                    print(f"【LLM Batch Warning】Attempt {attempt+1} failed: {e}")
+                    await asyncio.sleep(2 ** attempt)
+            
+            # fallback
+            print("【LLM Batch Error】Fallback to regex")
+            return (batch_idxs, [calc_article_opportunity_score(r) for r in batch])
+
+    if batches:
+        batch_outputs = await asyncio.gather(*[process_batch(b) for b in batches])
+        for idxs, results in batch_outputs:
+            for i, res in zip(idxs, results):
+                final_results[i] = res
+                
+    return final_results
 
     return {
         "status": "success",

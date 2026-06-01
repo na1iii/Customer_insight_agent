@@ -22,6 +22,9 @@ import utils.db_helper as db
 from utils.file_helper import ensure_dir
 from utils.mock_db import POTENTIAL_CLIENTS
 from utils.rag_engine import RAGEngine
+import asyncio
+from openai import AsyncOpenAI
+import json
 
 DISTRICT_ALIASES = {
     "浦东": "浦东新区",
@@ -765,10 +768,22 @@ def _build_export_url(filters: Dict[str, Any]) -> str:
 
 
 def handle(keyword: str, user_id: int = None) -> dict:
+    if not keyword:
+        return {
+            "type": "text",
+            "content": "请问您想挖掘哪个行政区或哪个行业的高潜客户？（例如：浦东新区、人工智能行业等）"
+        }
     filters = parse_filters(keyword)
     db.log_event(user_id, "potential", "INFO", f"开始检索高潜客户线索。过滤条件: {filters}")
 
     items = get_recommendations(filters)
+    
+    if items:
+        try:
+            items = asyncio.run(_async_generate_all_reasons(items))
+        except Exception as e:
+            db.log_event(user_id, "potential", "WARNING", f"大模型润色推荐理由失败: {e}")
+            
     district_label = filters.get("district") or "全市"
     industry_label = filters.get("industry")
     title_parts = [district_label]
@@ -861,3 +876,57 @@ def export_excel(
     excel_path = write_items_to_excel(items, safe_scope)
     db.log_event(user_id, "potential", "INFO", f"高潜客户 Excel 导出成功: {excel_path}")
     return excel_path
+
+
+async def _async_generate_reason(item: dict) -> dict:
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+    if not api_key or "your_api_key" in api_key:
+        return item
+        
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    
+    rag_evidences = [e.get("title") for e in item.get("rag_evidence", [])]
+    
+    prompt = f"""
+请作为顶级的大客户经理和售前架构师，为高潜企业“{item.get('name')}”撰写一段个性化的推荐理由和下一步行动建议。
+【已知企业信息】：
+行业：{item.get('industry', '未知')}
+已知资质：{item.get('qualification', '无')}
+收入增速：{item.get('growth_rate', '未知')}
+命中信号标签：{','.join(item.get('signals', []))}
+最新动态标题：{item.get('latest_title', '无')}
+RAG补充证据：{rag_evidences}
+
+【撰写要求】：
+1. 根据上述信息，分析该企业的近期动态或资质意味着怎样的业务扩张、数字化转型等潜在需求。
+2. 推荐理由（reason）：一到两句精炼的分析，说明为什么值得优先跟进。必须彻底摆脱模板化套话，要深度结合企业的具体行业和具体动态来写，例如“该企业近期完成了A轮融资，且具备专精特新资质，表明其研发投入将加大，可能有云算力扩容需求。”
+3. 下一步动作（next_action）：结合行业给出下一步业务拓展建议（例如专线、云资源、5G专网、ICT集成或政策申报），一句话概括。如果新闻提到新办公楼，建议写“跟进园区专线建设”等。
+4. 严格以 JSON 格式返回，包含 'reason' 和 'next_action' 两个字符串字段，不要有 ```json 标记。
+"""
+    try:
+        response = await client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "你是一个顶级售前架构师，擅长用最敏锐的商业视角深度剖析企业新闻与资质背后的商机。"},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            timeout=15.0
+        )
+        res = json.loads(response.choices[0].message.content)
+        if "reason" in res and res["reason"]:
+            item["reason"] = res["reason"]
+        if "next_action" in res and res["next_action"]:
+            item["next_action"] = res["next_action"]
+    except Exception as e:
+        print(f"Generate reason error for {item.get('name')}: {e}")
+    return item
+
+async def _async_generate_all_reasons(items: list) -> list:
+    tasks = [_async_generate_reason(item) for item in items[:10]] # 只润色前10个，避免过载
+    await asyncio.gather(*tasks)
+    return items
+

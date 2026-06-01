@@ -190,11 +190,22 @@ def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list
     if not evidence:
         return base
 
-    titles = "、".join([item.get("title") for item in evidence[:3] if item.get("title")])
+    title_links = []
+    for item in evidence[:3]:
+        title = item.get("title")
+        link = item.get("link")
+        if title:
+            if link:
+                title_links.append(f"[{title}]({link})")
+            else:
+                title_links.append(title)
+                
+    titles_str = "、".join(title_links)
     entities = "、".join([item.get("entity_name") for item in evidence[:3] if item.get("entity_name")])
+    
     if is_city_report:
-        return f"{base} RAG 检索进一步显示，近期较值得关注的商机线索包括{titles or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
-    return f"{base} RAG 检索进一步显示，{region_name}近期较值得关注的线索包括{titles or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
+        return f"{base} RAG 检索进一步显示，近期较值得关注的商机线索包括{titles_str or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
+    return f"{base} RAG 检索进一步显示，{region_name}近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
 
 
 def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summary: dict, user_id: int = None) -> dict:
@@ -231,8 +242,12 @@ def handle(keyword: str, user_id: int = None) -> dict:
     region_name = normalize_district(keyword)
     is_city_report = region_name == CITY_REPORT_NAME
 
-    if keyword and region_name == DEFAULT_DISTRICT and DEFAULT_DISTRICT not in keyword:
-        db.log_event(user_id, "regional", "WARNING", f"未能从输入 '{keyword}' 识别明确行政区，默认使用 {DEFAULT_DISTRICT}。")
+    if not keyword or (region_name == DEFAULT_DISTRICT and DEFAULT_DISTRICT not in keyword):
+        db.log_event(user_id, "regional", "INFO", f"未能从输入 '{keyword}' 识别明确行政区，提示用户选择。")
+        return {
+            "type": "text",
+            "content": "请问您需要生成哪个区的区域经济报告？（例如：浦东新区、静安区、黄浦区等，或者上海市）"
+        }
 
     db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片。")
 

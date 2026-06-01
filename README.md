@@ -71,12 +71,12 @@ ES_INDEX="customer_insight_agent_logs"
 ### 3. 运行服务
 在终端运行以下命令启动服务：
 ```bash
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app:app --host 0.0.0.0 --port 5001 --reload
 ```
 
 ### 4. 访问系统
 服务启动后，打开浏览器访问：
-- **智能交互终端**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+- **智能交互终端**: [http://127.0.0.1:5001/](http://127.0.0.1:5001/)
 
 ---
 

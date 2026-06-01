@@ -15,10 +15,24 @@ class TaskCommand(BaseModel):
     )
     keyword: Optional[str] = Field(None, description="提取主体名称。如公司名（上海电信）、行政区（静安区）、行业名（通信行业）。对于general_chat，可以直接放入用户的关键实体或空着")
 
-def get_intent_router(user_input: str) -> TaskCommand:
+def get_intent_router(user_input: str, user_id: int = None, chat_history: list = None) -> TaskCommand:
     """
-    通过 DeepSeek API 识别用户的意图并提取主体关键词
+    根据用户输入，调用大模型分析其业务意图，并提取关键实体。
+    如果未配置 API Key，将回退到基于规则的意图识别。
     """
+    text = (user_input or "").strip()
+    if not text:
+        return TaskCommand(intent="general_chat", keyword="")
+        
+    generic_prompts = {
+        "我想看一家企业的精准画像": TaskCommand(intent="query_customer", keyword=None),
+        "我想生成一份区域经济报告": TaskCommand(intent="regional_report", keyword=None),
+        "我想查看行业发展趋势报告": TaskCommand(intent="industry_report", keyword=None),
+        "我想找一些高潜客户线索": TaskCommand(intent="high_potential", keyword=None)
+    }
+    if text in generic_prompts:
+        return generic_prompts[text]
+
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
@@ -26,6 +40,29 @@ def get_intent_router(user_input: str) -> TaskCommand:
     # 兜底解析逻辑，以防 API 调用失败
     def fallback_parse(text: str) -> TaskCommand:
         text_lower = text.lower()
+        
+        # 0. 结合上下文处理短回答（如仅输入地名或公司名）
+        if chat_history and len(text_lower) < 15:
+            last_msg = next((m for m in reversed(chat_history) if m.get("role") == "assistant"), None)
+            if last_msg:
+                content = last_msg.get("content", "")
+                if "高潜客户" in content or "重点客户" in content:
+                    return TaskCommand(intent="high_potential", keyword=text.strip())
+                if "哪家企业" in content or "画像" in content:
+                    return TaskCommand(intent="query_customer", keyword=text.strip())
+                if "区域经济" in content or "哪个区" in content:
+                    return TaskCommand(intent="regional_report", keyword=text.strip())
+                if "发展趋势报告" in content or "哪个行业" in content:
+                    return TaskCommand(intent="industry_report", keyword=text.strip())
+                    
+        if text_lower in ["我想看一家企业的精准画像", "我想生成一份区域经济报告", "我想查看行业发展趋势报告", "我想找一些高潜客户线索"]:
+            mapping = {
+                "我想看一家企业的精准画像": "query_customer",
+                "我想生成一份区域经济报告": "regional_report",
+                "我想查看行业发展趋势报告": "industry_report",
+                "我想找一些高潜客户线索": "high_potential"
+            }
+            return TaskCommand(intent=mapping[text_lower], keyword=None)
         districts = [
             "浦东新区", "黄浦区", "徐汇区", "长宁区", "静安区", "普陀区", "虹口区", "杨浦区",
             "闵行区", "宝山区", "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区",
@@ -73,6 +110,10 @@ def get_intent_router(user_input: str) -> TaskCommand:
                 if not any(ind in text_lower for ind in industries) and "行业报告" not in text_lower and "行业研报" not in text_lower:
                     suffix = "新区" if r == "浦东" else "区"
                     return TaskCommand(intent="regional_report", keyword=f"{r}{suffix}")
+                    
+        # 2.1 针对未指定区县但请求区域经济报告的兜底
+        if "区域报告" in text_lower or "区域经济报告" in text_lower or "区域商机" in text_lower:
+            return TaskCommand(intent="regional_report", keyword=None)
                 
         # 3. 行业报告意图
         for ind in industries:
@@ -141,15 +182,24 @@ def get_intent_router(user_input: str) -> TaskCommand:
             "   - 'general_chat' (当用户进行通用聊天、问候、跨行业对比、分析建议、询问业务策略、比较两个行业、为什么、怎么办等非具体报表查询的灵活开放性提问时)\n"
             "2. 'keyword': 提取的主体名称，如公司名（如莉莉丝游戏、上海电信）、行政区（如静安区）、行业（如通信行业）。"
             "如果是 general_chat，请将用户提问中包含的实体（如'新能源'、'人工智能'等）作为 keyword 返回，没有则为 null。\n\n"
+            "【极端重要提示】：如果用户输入仅仅是一个地名或行业名（例如：'浦东新区'、'通信行业'），你必须结合上下文中的 assistant 提问来决定 intent！如果上一轮 assistant 问的是“您想挖掘哪个行政区或行业的**高潜客户**？”，那么当前 intent 必须是 'high_potential'，而绝对不能判定为 'regional_report'！同理，如果是在问企业画像，那就是 'query_customer'。不要因为输入有地名就盲目判定为区域报告！\n\n"
             "注意：你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
         )
         
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        if chat_history:
+            # 取最近的3-5条消息作为上下文
+            recent_history = chat_history[-5:]
+            for msg in recent_history:
+                role = "user" if msg.get("role") == "user" else "assistant"
+                messages.append({"role": role, "content": msg.get("content", "")[:500]})
+                
+        messages.append({"role": "user", "content": user_input})
+
         response = client.chat.completions.create(
             model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ],
+            messages=messages,
             response_format={"type": "json_object"},
             temperature=0.0,
             timeout=10.0

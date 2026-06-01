@@ -5,7 +5,7 @@ from openai import AsyncOpenAI
 from services.industry import ALL_26_INDUSTRIES
 import utils.db_helper as db
 
-async def handle_stream(user_text: str, user_id: int = None):
+async def handle_stream(user_text: str, user_id: int = None, history: list = None):
     """
     处理通用聊天/开放性问答意图，支持自动匹配本地行业库以增强上下文
     """
@@ -74,12 +74,19 @@ async def handle_stream(user_text: str, user_id: int = None):
         
         prompt = user_text + context_injection
         
+        messages = [{"role": "system", "content": system_instructions}]
+        
+        if history:
+            recent_history = history[-10:]
+            for msg in recent_history:
+                role = "user" if msg.get("role") == "user" else "assistant"
+                messages.append({"role": role, "content": msg.get("content", "")[:1000]})
+                
+        messages.append({"role": "user", "content": prompt})
+
         response = await client.chat.completions.create(
             model=model_name,
-            messages=[
-                {"role": "system", "content": system_instructions},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             temperature=0.6,
             timeout=30.0,
             stream=True

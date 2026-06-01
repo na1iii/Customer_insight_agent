@@ -694,13 +694,16 @@ def handle(keyword: str, user_id: int = None) -> dict:
     """
     生成行业深度报告 HTML，并自动推送至机器人 Webhook。返回报告访问链接。
     """
+    k = str(keyword or "").strip()
+    if not k or (k in ("行业", "行业报告", "生成行业报告", "行业研报") or ("行业报告" in k and "全行业" not in k)):
+        return {
+            "type": "text",
+            "content": "请问您需要生成哪个行业的深度分析报告？（例如：人工智能、医药、新能源，或回复“全行业”生成汇编报告）"
+        }
+
     # 如果关键词是空，或是泛指的“全行业”、“行业”、“行业报告”、“生成行业报告”等，均判定为全行业汇编报告
     is_all_industries = (
-        not keyword 
-        or keyword in ("全行业", "行业", "行业报告", "生成行业报告", "行业研报") 
-        or "行业报告" in str(keyword) 
-        or "行业研报" in str(keyword)
-        or "全行业" in str(keyword)
+        "全行业" in k
     )
     
     if is_all_industries:

@@ -161,8 +161,10 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
         yield f"data: {json.dumps({'type': 'router_start'}, ensure_ascii=False)}\n\n"
         
         # B. AI 路由器提取实体与意图 (在线程池中执行以防止阻塞事件循环)
+        history = db.get_messages(conv_id)
+        
         def run_router():
-            return get_intent_router(user_text)
+            return get_intent_router(user_text, chat_history=history)
             
         command = await asyncio.to_thread(run_router)
         keyword = command.keyword if command.keyword else user_text
@@ -183,8 +185,17 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
             else:
                 resolved_scene = "general_chat"
         
+        # 拦截：如果 keyword 是预设的提示语，将其置空，以便触发各服务的反问逻辑
+        if keyword in ["我想看一家企业的精准画像", "我想生成一份区域经济报告", "我想查看行业发展趋势报告", "我想找一些高潜客户线索"]:
+            keyword = ""
+            
+        # 修复：如果是反问实体的状态（即 keyword 为空），不需要在前台展示耗时的进度卡片
+        display_scene = resolved_scene
+        if not keyword and resolved_scene in ["customer", "regional", "industry", "potential"]:
+            display_scene = "general_chat"
+            
         # 发送意图解析首包
-        yield f"data: {json.dumps({'type': 'info', 'resolved_scene': resolved_scene}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'info', 'resolved_scene': display_scene}, ensure_ascii=False)}\n\n"
         
         # C. 记录系统事件日志
         db.log_event(user_id, resolved_scene, "INFO", f"接收到提问，RAG实体提取: '{keyword}'，解析意图场景: '{resolved_scene}'")
@@ -202,7 +213,7 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
             
         elif resolved_scene == "general_chat":
             # 通用问答流式输出
-            async for chunk in general_chat.handle_stream(user_text, user_id=user_id):
+            async for chunk in general_chat.handle_stream(user_text, user_id=user_id, history=history):
                 msg_content += chunk
                 yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
                 

@@ -16,7 +16,10 @@ def handle(keyword: str, user_id: int = None) -> dict:
     处理查询客户画像意图，采用 Advanced RAG + Agentic Web Search
     """
     if not keyword:
-        keyword = "上海电信"
+        return {
+            "type": "text",
+            "content": "请问您想分析哪家企业？（例如：上海电信、上海移动等）"
+        }
         
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
@@ -279,7 +282,12 @@ async def handle_stream(keyword: str, user_id: int = None):
     处理查询客户画像意图，采用异步流式输出方式返回
     """
     if not keyword:
-        keyword = "上海电信"
+        msg = "请问您想分析哪家企业？（例如：上海电信、上海移动等）"
+        chunk_size = 5
+        for i in range(0, len(msg), chunk_size):
+            yield msg[i:i+chunk_size]
+            await asyncio.sleep(0.015)
+        return
         
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
