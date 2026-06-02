@@ -185,13 +185,25 @@ def _format_regional_evidence(retrieved_docs: list[dict], limit: int = 5) -> lis
     return evidence
 
 
-def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list[dict], is_city_report: bool) -> str:
+def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list[dict], documents: list[dict], is_city_report: bool) -> str:
     base = build_summary_text(region_name, summary, is_city_report=is_city_report)
-    if not evidence:
+    if not documents:
         return base
 
+    sorted_docs = sorted(documents, key=lambda x: str(x.get("publish_date") or ""), reverse=True)
+    latest_3 = []
+    seen = set()
+    for doc in sorted_docs:
+        key = (doc.get("title"), doc.get("entity_name"))
+        if key in seen:
+            continue
+        seen.add(key)
+        latest_3.append(doc)
+        if len(latest_3) >= 3:
+            break
+
     title_links = []
-    for item in evidence[:3]:
+    for item in latest_3:
         title = item.get("title")
         link = item.get("link")
         if title:
@@ -201,11 +213,11 @@ def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list
                 title_links.append(title)
                 
     titles_str = "、".join(title_links)
-    entities = "、".join([item.get("entity_name") for item in evidence[:3] if item.get("entity_name")])
+    entities = "、".join([item.get("entity_name") for item in latest_3 if item.get("entity_name")])
     
     if is_city_report:
-        return f"{base} RAG 检索进一步显示，近期较值得关注的商机线索包括{titles_str or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
-    return f"{base} RAG 检索进一步显示，{region_name}近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
+        return f"{base} 最新商机数据进一步显示，近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
+    return f"{base} 最新商机数据进一步显示，{region_name}近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
 
 
 def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summary: dict, user_id: int = None) -> dict:
@@ -227,7 +239,7 @@ def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summ
             for doc in retrieved_docs:
                 doc["rerank_score"] = doc.get("final_score", 0.0)
         evidence = _format_regional_evidence(retrieved_docs)
-        summary_text = _render_regional_rag_summary(region_name, summary, evidence, is_city_report)
+        summary_text = _render_regional_rag_summary(region_name, summary, evidence, documents, is_city_report)
         db.log_event(user_id, "regional", "INFO", f"区域 RAG 检索完成，证据数: {len(evidence)}")
         return {"source_type": "mysql_db_bm25_rag", "evidence": evidence, "summary": summary_text}
     except Exception as exc:

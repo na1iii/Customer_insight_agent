@@ -1863,7 +1863,11 @@
                         return;
                     }
                 }
-                selectConversation(data[0].id);
+                
+                // 甲方要求：每次登陆或刷新页面后，不要默认展示上一次的历史记录，而是展示空白的新对话
+                activeConversationId = null;
+                clearChat();
+                updateUIState(false);
 
             } catch (err) {
                 listEl.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:12px;padding:20px;">会话列表获取失败</div>';

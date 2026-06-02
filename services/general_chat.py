@@ -68,7 +68,8 @@ async def handle_stream(user_text: str, user_id: int = None, history: list = Non
         
         system_instructions = (
             "你是一个资深的产业分析师和商业大客户经理。用户可能会向你咨询行业对比、业务建议、宏观分析或日常交流。\n"
-            "请直接、专业、热情地回答用户的问题。如果系统提供了【行业背景参考】，请务必基于参考资料中的数据和事件进行总结和对比。\n"
+            "请直接、专业、热情地回答用户的问题。如果系统或历史记录中提供了带有链接的新闻线索、重点企业事件或舆情动态，\n"
+            "你在引用或提及这些重点企业和标杆事件时，**必须**使用 Markdown 超链接格式将它们包裹起来，让用户可以直接点击跳转到对应的新闻页面（例如：[某某企业完成亿元融资](http://...)）。\n"
             "回答要求排版精美（使用 Markdown 列表、加粗），条理清晰，有深度商业洞见。"
         )
         
@@ -77,10 +78,30 @@ async def handle_stream(user_text: str, user_id: int = None, history: list = Non
         messages = [{"role": "system", "content": system_instructions}]
         
         if history:
+            import json
             recent_history = history[-10:]
             for msg in recent_history:
                 role = "user" if msg.get("role") == "user" else "assistant"
-                messages.append({"role": role, "content": msg.get("content", "")[:1000]})
+                text_content = msg.get("content", "")[:1000]
+                
+                payload = msg.get("data_payload")
+                if payload:
+                    try:
+                        if isinstance(payload, str):
+                            payload = json.loads(payload)
+                        links = []
+                        for ev in payload.get("evidence", []):
+                            if ev.get("title") and ev.get("link"):
+                                links.append(f"- [{ev['title']}]({ev['link']})")
+                        for item in payload.get("items", []):
+                            if item.get("news_title") and item.get("news_link"):
+                                links.append(f"- [{item['news_title']}]({item['news_link']})")
+                        if links:
+                            text_content += "\n\n【该回答引用的新闻来源链接】：\n" + "\n".join(links)
+                    except:
+                        pass
+                
+                messages.append({"role": role, "content": text_content})
                 
         messages.append({"role": "user", "content": prompt})
 

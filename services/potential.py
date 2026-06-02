@@ -232,61 +232,6 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
 def fetch_enterprise_signals(candidates: List[Dict[str, Any]], max_candidates: int = 100) -> Dict[str, Dict[str, Any]]:
     return {}
 
-    sql = text("""
-        SELECT
-            `标题` AS title,
-            `内容` AS content,
-            `发布日期` AS release_time,
-            `URL` AS link
-        FROM zq_dtl_shnews_yyy
-        WHERE `标题` IS NOT NULL AND `标题` != ''
-        ORDER BY `发布日期` DESC
-        LIMIT 800
-    """)
-
-    with db.engine.connect() as conn:
-        news_rows = [dict(row) for row in conn.execute(sql).mappings().all()]
-
-    for ent_name, short_name in searchable:
-        signal_names: List[str] = []
-        signal_score = 0
-        latest_title = ""
-        latest_date = ""
-        latest_link = ""
-
-        match_terms = [ent_name]
-        if short_name and short_name not in match_terms:
-            match_terms.append(short_name)
-
-        for news in news_rows:
-            title = _clean_text(news.get("title"))
-            content = _clean_text(news.get("content"))
-            text_all = title + content[:1200]
-            if not any(term and term in text_all for term in match_terms):
-                continue
-
-            if not latest_title:
-                latest_title = title
-                latest_date = _clean_text(news.get("release_time"))
-                latest_link = _clean_text(news.get("link"))
-
-            for signal_name, points, keywords in SIGNAL_RULES:
-                if signal_name not in signal_names and _contains_any(text_all, keywords):
-                    signal_names.append(signal_name)
-                    signal_score += points
-
-            if len(signal_names) >= 4:
-                break
-
-        signals[ent_name] = {
-            "signals": signal_names,
-            "score": min(signal_score, 25),
-            "latest_title": latest_title,
-            "latest_date": latest_date,
-            "link": latest_link,
-        }
-
-    return signals
 
 
 def score_enterprise(row: Dict[str, Any]) -> Tuple[int, List[str], Dict[str, int]]:
