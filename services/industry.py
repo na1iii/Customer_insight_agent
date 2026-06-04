@@ -695,6 +695,17 @@ def handle(keyword: str, user_id: int = None) -> dict:
     生成行业深度报告 HTML，并自动推送至机器人 Webhook。返回报告访问链接。
     """
     k = str(keyword or "").strip()
+    
+    regions_list = [
+        "浦东新区", "黄浦区", "徐汇区", "长宁区", "静安区", "普陀区", "虹口区", "杨浦区",
+        "闵行区", "宝山区", "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区",
+        "浦东", "黄浦", "徐汇", "长宁", "静安", "普陀", "虹口", "杨浦", "闵行", "宝山", "嘉定", "金山", "松江", "青浦", "奉贤", "崇明",
+        "上海", "上海市", "全市", "全区", "区域", "全市行业", "全市所有行业"
+    ]
+    if k in regions_list:
+        k = "全行业"
+        keyword = "全行业"
+        
     if not k or (k in ("行业", "行业报告", "生成行业报告", "行业研报") or ("行业报告" in k and "全行业" not in k)):
         return {
             "type": "text",
@@ -1006,7 +1017,22 @@ def handle(keyword: str, user_id: int = None) -> dict:
             )
             
             content = response.choices[0].message.content
-            parsed_data = json.loads(content)
+            content_clean = content.strip()
+            if content_clean.startswith("```"):
+                if content_clean.startswith("```json"):
+                    content_clean = content_clean[7:]
+                else:
+                    content_clean = content_clean[3:]
+                if content_clean.endswith("```"):
+                    content_clean = content_clean[:-3]
+                content_clean = content_clean.strip()
+            
+            try:
+                parsed_data = json.loads(content_clean)
+            except Exception:
+                import re
+                content_clean = re.sub(r'[\x00-\x1F\x7F]', '', content_clean)
+                parsed_data = json.loads(content_clean)
             if isinstance(parsed_data, dict):
                 if "title" in parsed_data and (is_dynamic or is_all_industries):
                     title = parsed_data["title"]

@@ -180,8 +180,12 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
             "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或明确包含'行业报告'、'行业研报'字眼时。)\n"
             "   - 'high_potential' (当用户要求查看高潜客户、重点客户、潜在客户、推荐名单、展示客户表格、线索或导出 Excel 时)\n"
             "   - 'general_chat' (当用户进行通用聊天、问候、跨行业对比、分析建议、询问业务策略、比较两个行业、为什么、怎么办等非具体报表查询的灵活开放性提问时)\n"
-            "2. 'keyword': 提取的主体名称，如公司名（如莉莉丝游戏、上海电信）、行政区（如静安区）、行业（如通信行业）。"
-            "如果是 general_chat，请将用户提问中包含的实体（如'新能源'、'人工智能'等）作为 keyword 返回，没有则为 null。\n\n"
+            "2. 'keyword': 根据意图提取最合适的主体名称：\n"
+            "   - 对于 'query_customer'，提取具体的公司/企业/客户名称（如'莉莉丝游戏'、'上海电信'）。\n"
+            "   - 对于 'regional_report'，提取具体的行政区名称（如'上海市'、'静安区'、'浦东新区'）。\n"
+            "   - 对于 'industry_report'，必须且只能提取具体的行业名称（如'汽车行业'、'人工智能'）。若用户表达的是‘全行业报告’、‘上海市全行业’或未指定具体行业，则 keyword 必须为'全行业'，绝对不要单独将城市或行政区（如'上海市'、'静安区'）作为行业 keyword 提取。\n"
+            "   - 对于 'high_potential'，提取行政区和/或行业名称。\n"
+            "   - 对于 'general_chat'，请将用户提问中包含的实体（如'新能源'、'人工智能'等）作为 keyword 返回，没有则为 null。\n\n"
             "【极端重要提示】：如果用户输入仅仅是一个地名或行业名（例如：'浦东新区'、'通信行业'），你必须结合上下文中的 assistant 提问来决定 intent！如果上一轮 assistant 问的是“您想挖掘哪个行政区或行业的**高潜客户**？”，那么当前 intent 必须是 'high_potential'，而绝对不能判定为 'regional_report'！同理，如果是在问企业画像，那就是 'query_customer'。不要因为输入有地名就盲目判定为区域报告！\n\n"
             "注意：你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
         )
@@ -209,8 +213,22 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
         print(f"【Router JSON Response】: {content}")
         
         data = json.loads(content)
-        return TaskCommand.model_validate(data)
+        command = TaskCommand.model_validate(data)
         
     except Exception as e:
         print(f"【Router Error】大模型解析意图失败 ({e})，启用本地规则路由。")
-        return fallback_parse(user_input)
+        command = fallback_parse(user_input)
+
+    # 后置修正：若提取出的意图为行业报告且关键词包含或等于上海市/各区等行政区划词，自动修正为全行业
+    if command and command.intent == "industry_report":
+        kw = (command.keyword or "").strip()
+        regions_list = [
+            "浦东新区", "黄浦区", "徐汇区", "长宁区", "静安区", "普陀区", "虹口区", "杨浦区",
+            "闵行区", "宝山区", "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区",
+            "浦东", "黄浦", "徐汇", "长宁", "静安", "普陀", "虹口", "杨浦", "闵行", "宝山", "嘉定", "金山", "松江", "青浦", "奉贤", "崇明",
+            "上海", "上海市", "全市", "全区", "区域", "全市行业", "全市所有行业"
+        ]
+        if not kw or "全行业" in kw or kw in regions_list:
+            command.keyword = "全行业"
+            
+    return command
