@@ -45,74 +45,42 @@ def handle(keyword: str, user_id: int = None) -> dict:
         if clue_res:
             db_clue_info = clue_res[0]
             
-        # B. 检索微信公众号动态 (wechat_article_ai_parse, weixin_article_dtl_unique)
-        articles_parse = db.query_business_db(
-            "SELECT `EntName`, `Abstract`, `Topic` FROM wechat_article_ai_parse WHERE `EntName` LIKE :keyword OR `Abstract` LIKE :keyword LIMIT 5",
-            {"keyword": f"%{keyword}%"}
-        )
-        articles_unique = db.query_business_db(
-            "SELECT `title`, `content`, `link`, `date` FROM weixin_article_dtl_unique WHERE `title` LIKE :keyword OR `content` LIKE :keyword LIMIT 5",
-            {"keyword": f"%{keyword}%"}
-        )
-        
-        # C. 检索项目合作签约动态 (zq_dtl_shnews_yyy)
-        news_res = db.query_business_db(
-            "SELECT `标题`, `内容`, `来源`, `URL`, `发布日期` FROM zq_dtl_shnews_yyy "
-            "WHERE `标题` LIKE :keyword OR `内容` LIKE :keyword LIMIT 5",
+        # B. 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
+        extract_res = db.query_business_db(
+            "SELECT `EntName`, `Abstract`, `Topic`, "
+            "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
+            "`publish_time` AS date, `wechat_name` AS source "
+            "FROM weixin_deepseek_extract_d "
+            "WHERE `EntName` LIKE :keyword OR `EntShortName` LIKE :keyword "
+            "OR `article_title` LIKE :keyword OR `article_content` LIKE :keyword "
+            "ORDER BY `publish_time` DESC LIMIT 15",
             {"keyword": f"%{keyword}%"}
         )
         
         # 将拉取到的关系型文本拼装成 RAGEngine 需要的内存文档结构
-        for a in articles_unique:
+        for a in extract_res:
             db_documents.append({
-                "title": a.get("title") or "微信文章",
-                "content": a.get("content") or "",
-                "publish_date": a.get("date") or "",
-                "source": a.get("name") or "微信公众号",
+                "title": a.get("title") or a.get("Topic") or "微信舆情/新闻",
+                "content": a.get("content") or a.get("Abstract") or "",
+                "publish_date": str(a.get("date") or ""),
+                "source": a.get("source") or "微信舆情数据",
                 "link": a.get("link") or "",
                 "company": keyword
             })
             
-        for a in articles_parse:
-            db_documents.append({
-                "title": a.get("Topic") or "微信舆情摘要",
-                "content": a.get("Abstract") or "",
-                "publish_date": "",
-                "source": "微信动态解析",
-                "link": "",
-                "company": keyword
-            })
-            
-        for n in news_res:
-            db_documents.append({
-                "title": n.get("标题") or "重大合作项目",
-                "content": n.get("内容") or "",
-                "publish_date": n.get("发布日期") or "",
-                "source": n.get("来源") or "新闻动态",
-                "link": n.get("URL") or "",
-                "company": keyword
-            })
-            
         # 格式化列表，以防后续还需要用到
-        for a in articles_parse:
+        for a in extract_res:
             ent = a.get("EntName", "")
-            abst = a.get("Abstract", "")
+            abst = (a.get("Abstract") or "")[:200]
             topic = a.get("Topic", "")
-            db_articles.append(f"【微信动态解析】企业名称: {ent} | 主题: {topic} | 摘要: {abst}")
-            
-        for a in articles_unique:
             title = a.get("title", "")
-            content = a.get("content", "")[:300]
+            content = (a.get("content") or "")[:200]
             link = a.get("link", "")
-            date = a.get("date", "")
-            db_articles.append(f"【微信文章】标题: {title} | 发布时间: {date} | 正文片段: {content} | 链接: {link}")
+            date = str(a.get("date") or "")
+            source = a.get("source") or ""
             
-        for n in news_res:
-            title = n.get("标题") or "无标题"
-            src = n.get("来源") or "未知来源"
-            date = n.get("发布日期") or "未知日期"
-            content = (n.get("内容") or "")[:200]
-            db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {src} | 日期: {date} | 摘要: {content}")
+            db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
+            db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
             
         if db_clue_info or db_documents:
             db_hit = True
@@ -314,69 +282,40 @@ async def handle_stream(keyword: str, user_id: int = None):
             if clue_res:
                 db_clue_info = clue_res[0]
                 
-            articles_parse = db.query_business_db(
-                "SELECT `EntName`, `Abstract`, `Topic` FROM wechat_article_ai_parse WHERE `EntName` LIKE :keyword OR `Abstract` LIKE :keyword LIMIT 5",
-                {"keyword": f"%{keyword}%"}
-            )
-            articles_unique = db.query_business_db(
-                "SELECT `title`, `content`, `link`, `date` FROM weixin_article_dtl_unique WHERE `title` LIKE :keyword OR `content` LIKE :keyword LIMIT 5",
-                {"keyword": f"%{keyword}%"}
-            )
-            news_res = db.query_business_db(
-                "SELECT `标题`, `内容`, `来源`, `URL`, `发布日期` FROM zq_dtl_shnews_yyy "
-                "WHERE `标题` LIKE :keyword OR `内容` LIKE :keyword LIMIT 5",
+            # 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
+            extract_res = db.query_business_db(
+                "SELECT `EntName`, `Abstract`, `Topic`, "
+                "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
+                "`publish_time` AS date, `wechat_name` AS source "
+                "FROM weixin_deepseek_extract_d "
+                "WHERE `EntName` LIKE :keyword OR `EntShortName` LIKE :keyword "
+                "OR `article_title` LIKE :keyword OR `article_content` LIKE :keyword "
+                "ORDER BY `publish_time` DESC LIMIT 15",
                 {"keyword": f"%{keyword}%"}
             )
             
-            for a in articles_unique:
+            for a in extract_res:
                 db_documents.append({
-                    "title": a.get("title") or "微信文章",
-                    "content": a.get("content") or "",
-                    "publish_date": a.get("date") or "",
-                    "source": a.get("name") or "微信公众号",
+                    "title": a.get("title") or a.get("Topic") or "微信舆情/新闻",
+                    "content": a.get("content") or a.get("Abstract") or "",
+                    "publish_date": str(a.get("date") or ""),
+                    "source": a.get("source") or "微信舆情数据",
                     "link": a.get("link") or "",
                     "company": keyword
                 })
                 
-            for a in articles_parse:
-                db_documents.append({
-                    "title": a.get("Topic") or "微信舆情摘要",
-                    "content": a.get("Abstract") or "",
-                    "publish_date": "",
-                    "source": "微信动态解析",
-                    "link": "",
-                    "company": keyword
-                })
-                
-            for n in news_res:
-                db_documents.append({
-                    "title": n.get("标题") or "重大合作项目",
-                    "content": n.get("内容") or "",
-                    "publish_date": n.get("发布日期") or "",
-                    "source": n.get("来源") or "新闻动态",
-                    "link": n.get("URL") or "",
-                    "company": keyword
-                })
-                
-            for a in articles_parse:
+            for a in extract_res:
                 ent = a.get("EntName", "")
-                abst = a.get("Abstract", "")
+                abst = (a.get("Abstract") or "")[:200]
                 topic = a.get("Topic", "")
-                db_articles.append(f"【微信动态解析】企业名称: {ent} | 主题: {topic} | 摘要: {abst}")
-                
-            for a in articles_unique:
                 title = a.get("title", "")
-                content = a.get("content", "")[:300]
+                content = (a.get("content") or "")[:200]
                 link = a.get("link", "")
-                date = a.get("date", "")
-                db_articles.append(f"【微信文章】标题: {title} | 发布时间: {date} | 正文片段: {content} | 链接: {link}")
+                date = str(a.get("date") or "")
+                source = a.get("source") or ""
                 
-            for n in news_res:
-                title = n.get("标题") or "无标题"
-                src = n.get("来源") or "未知来源"
-                date = n.get("发布日期") or "未知日期"
-                content = (n.get("内容") or "")[:200]
-                db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {src} | 日期: {date} | 摘要: {content}")
+                db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
+                db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
                 
             if db_clue_info or db_documents:
                 db_hit = True

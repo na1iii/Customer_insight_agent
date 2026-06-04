@@ -649,18 +649,18 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
 
         <!-- 实时产业情报数据源展示 -->
         <div class="intelligence-section">
-            <h2>🔗 实时产业情报数据源 (MySQL 6张业务表全接入)</h2>
+            <h2>🔗 实时产业情报数据源 (多源数据融合接入)</h2>
             <div class="intelligence-grid">
                 <div class="intelligence-card">
-                    <h3>📋 国家与行业政策 (onenet库)</h3>
+                    <h3>📋 国家与行业政策</h3>
                     {policies_html}
                 </div>
                 <div class="intelligence-card">
-                    <h3>🏛️ 地方委办局政策 (weiban库)</h3>
+                    <h3>🏛️ 地方委办局政策</h3>
                     {weiban_html}
                 </div>
                 <div class="intelligence-card">
-                    <h3>📰 上海产业新闻动态 (shnews库)</h3>
+                    <h3>📰 产业新闻与动态</h3>
                     {news_html}
                 </div>
             </div>
@@ -746,25 +746,26 @@ def handle(keyword: str, user_id: int = None) -> dict:
     news = []
     articles = []
     
-    # 1. 从业务库中动态查询最新政策与上海新闻
+    # 1. 从业务库中动态查询最新政策与上海新闻 (均从 weixin_deepseek_extract_d 统一获取)
     if is_all_industries:
         try:
-            # A. 检索微信去重公众号文章库 (weixin_article_dtl_unique) - 画像核心文本源
+            # A. 检索微信去重公众号文章库 (weixin_deepseek_extract_d) - 画像核心文本源
             articles_sql = """
-                SELECT `title`, `content`, `link`, `date` 
-                FROM weixin_article_dtl_unique 
-                ORDER BY `date` DESC LIMIT 5
+                SELECT `article_title` AS `title`, `article_content` AS `content`, `article_url` AS `link`, `publish_time` AS `date`, `wechat_name` AS `name`
+                FROM weixin_deepseek_extract_d 
+                ORDER BY `publish_time` DESC LIMIT 5
             """
             articles = db.query_business_db(articles_sql)
-            db.log_event(user_id, "industry", "INFO", f"全行业查询微信动态去重表成功，获得 {len(articles)} 条记录。")
+            db.log_event(user_id, "industry", "INFO", f"全行业查询微信动态表成功，获得 {len(articles)} 条记录。")
         except Exception as e:
             db.log_event(user_id, "industry", "ERROR", f"全行业微信文章查询异常: {e}")
 
         try:
             policies_sql = """
-                SELECT `标题`, `正文`, `网址`, `发布单位`, `发布时间` 
-                FROM zq_dtl_onenet_all 
-                ORDER BY `发布时间` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `正文`, `article_url` AS `网址`, `wechat_name` AS `发布单位`, `publish_time` AS `发布时间` 
+                FROM weixin_deepseek_extract_d 
+                WHERE `article_title` LIKE '%政策%' OR `article_title` LIKE '%通知%' OR `article_title` LIKE '%意见%' OR `article_title` LIKE '%规划%'
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             policies = db.query_business_db(policies_sql)
             db.log_event(user_id, "industry", "INFO", f"全行业查询通用政策成功，获得 {len(policies)} 条记录。")
@@ -773,9 +774,11 @@ def handle(keyword: str, user_id: int = None) -> dict:
 
         try:
             weiban_sql = """
-                SELECT `政策名称` AS `标题`, `政策内容` AS `正文`, `链接` AS `网址`, `委办局` AS `发布单位`, `政策发布时间` AS `发布时间`
-                FROM burneau_weiban_policy_dtl
-                ORDER BY `爬取时间` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `正文`, `article_url` AS `网址`, `wechat_name` AS `发布单位`, `publish_time` AS `发布时间`
+                FROM weixin_deepseek_extract_d
+                WHERE (`article_title` LIKE '%政策%' OR `article_title` LIKE '%指南%' OR `article_title` LIKE '%办法%')
+                  AND (`wechat_name` LIKE '%发布%' OR `wechat_name` LIKE '%上海%' OR `wechat_name` LIKE '%临港%')
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             weiban_policies = db.query_business_db(weiban_sql)
             db.log_event(user_id, "industry", "INFO", f"全行业查询地方委办局政策成功，获得 {len(weiban_policies)} 条记录。")
@@ -784,9 +787,10 @@ def handle(keyword: str, user_id: int = None) -> dict:
             
         try:
             news_sql = """
-                SELECT `标题`, `内容`, `来源`, `发布日期`, `URL` 
-                FROM zq_dtl_shnews_yyy 
-                ORDER BY `发布日期` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `内容`, `wechat_name` AS `来源`, `publish_time` AS `发布日期`, `article_url` AS `URL` 
+                FROM weixin_deepseek_extract_d 
+                WHERE `NewsTag` IN ('签约', '市级领导人调研', '区级领导人调研', '开会')
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             news = db.query_business_db(news_sql)
             db.log_event(user_id, "industry", "INFO", f"全行业查询新闻成功，获得 {len(news)} 条记录。")
@@ -797,24 +801,25 @@ def handle(keyword: str, user_id: int = None) -> dict:
         params = {"kw": f"%{keyword_clean}%"}
         
         try:
-            # A. 检索微信去重公众号文章库 (weixin_article_dtl_unique) - 画像核心文本源
+            # A. 检索微信去重公众号文章库 (weixin_deepseek_extract_d) - 画像核心文本源
             articles_sql = """
-                SELECT `title`, `content`, `link`, `date` 
-                FROM weixin_article_dtl_unique 
-                WHERE `title` LIKE :kw OR `content` LIKE :kw 
-                ORDER BY `date` DESC LIMIT 5
+                SELECT `article_title` AS `title`, `article_content` AS `content`, `article_url` AS `link`, `publish_time` AS `date`, `wechat_name` AS `name`
+                FROM weixin_deepseek_extract_d 
+                WHERE (`article_title` LIKE :kw OR `article_content` LIKE :kw OR `Industry1` LIKE :kw OR `Industry2` LIKE :kw OR `Industry3` LIKE :kw)
+                ORDER BY `publish_time` DESC LIMIT 5
             """
             articles = db.query_business_db(articles_sql, params)
-            db.log_event(user_id, "industry", "INFO", f"行业 '{matched_key}' 查询微信动态去重表成功，获得 {len(articles)} 条记录。")
+            db.log_event(user_id, "industry", "INFO", f"行业 '{matched_key}' 查询微信动态表成功，获得 {len(articles)} 条记录。")
         except Exception as e:
             db.log_event(user_id, "industry", "ERROR", f"行业微信文章查询异常: {e}")
 
         try:
             policies_sql = """
-                SELECT `标题`, `正文`, `网址`, `发布单位`, `发布时间` 
-                FROM zq_dtl_onenet_all 
-                WHERE `关键词` LIKE :kw OR `标题` LIKE :kw OR `正文` LIKE :kw 
-                ORDER BY `发布时间` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `正文`, `article_url` AS `网址`, `wechat_name` AS `发布单位`, `publish_time` AS `发布时间` 
+                FROM weixin_deepseek_extract_d 
+                WHERE (`article_title` LIKE :kw OR `article_content` LIKE :kw OR `Industry1` LIKE :kw OR `Industry2` LIKE :kw OR `Industry3` LIKE :kw)
+                  AND (`article_title` LIKE '%政策%' OR `article_title` LIKE '%通知%' OR `article_title` LIKE '%意见%' OR `article_title` LIKE '%规划%')
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             policies = db.query_business_db(policies_sql, params)
             db.log_event(user_id, "industry", "INFO", f"行业 '{matched_key}' 查询通用政策成功，获得 {len(policies)} 条记录。")
@@ -823,10 +828,12 @@ def handle(keyword: str, user_id: int = None) -> dict:
 
         try:
             weiban_sql = """
-                SELECT `政策名称` AS `标题`, `政策内容` AS `正文`, `链接` AS `网址`, `委办局` AS `发布单位`, `政策发布时间` AS `发布时间`
-                FROM burneau_weiban_policy_dtl
-                WHERE `政策名称` LIKE :kw OR `政策内容` LIKE :kw OR `委办局` LIKE :kw
-                ORDER BY `爬取时间` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `正文`, `article_url` AS `网址`, `wechat_name` AS `发布单位`, `publish_time` AS `发布时间`
+                FROM weixin_deepseek_extract_d
+                WHERE (`article_title` LIKE :kw OR `article_content` LIKE :kw OR `Industry1` LIKE :kw OR `Industry2` LIKE :kw OR `Industry3` LIKE :kw)
+                  AND (`article_title` LIKE '%政策%' OR `article_title` LIKE '%指南%' OR `article_title` LIKE '%办法%')
+                  AND (`wechat_name` LIKE '%发布%' OR `wechat_name` LIKE '%上海%' OR `wechat_name` LIKE '%临港%')
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             weiban_policies = db.query_business_db(weiban_sql, params)
             db.log_event(user_id, "industry", "INFO", f"行业 '{matched_key}' 查询地方委办局政策成功，获得 {len(weiban_policies)} 条记录。")
@@ -835,10 +842,11 @@ def handle(keyword: str, user_id: int = None) -> dict:
             
         try:
             news_sql = """
-                SELECT `标题`, `内容`, `来源`, `发布日期`, `URL` 
-                FROM zq_dtl_shnews_yyy 
-                WHERE `标题` LIKE :kw OR `内容` LIKE :kw 
-                ORDER BY `发布日期` DESC LIMIT 3
+                SELECT `article_title` AS `标题`, `article_content` AS `内容`, `wechat_name` AS `来源`, `publish_time` AS `发布日期`, `article_url` AS `URL` 
+                FROM weixin_deepseek_extract_d 
+                WHERE (`article_title` LIKE :kw OR `article_content` LIKE :kw OR `Industry1` LIKE :kw OR `Industry2` LIKE :kw OR `Industry3` LIKE :kw)
+                  AND (`NewsTag` IN ('签约', '市级领导人调研', '区级领导人调研', '开会') OR `article_title` LIKE '%签约%' OR `article_title` LIKE '%合作%' OR `article_title` LIKE '%项目%')
+                ORDER BY `publish_time` DESC LIMIT 3
             """
             news = db.query_business_db(news_sql, params)
             db.log_event(user_id, "industry", "INFO", f"行业 '{matched_key}' 查询新闻成功，获得 {len(news)} 条记录。")
@@ -912,13 +920,13 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"你是一个资深行业分析师。用户请求一份覆盖全行业（包含26个支柱产业）的宏观深度汇编报告。\n"
                     f"我们预置了26个行业的详细章节，现在需要你根据以下从业务数据库中检索到的最新宏观微信舆情、国家/地方政策与上海新闻动态，"
                     f"为这份报告撰写一个极具洞察力的专业大标题，以及一段结构严密的前言导读（Summary）。\n\n"
-                    f"【最新检索到的宏观微信舆情 (来自 weixin_article_dtl_unique)】:\n"
+                    f"【最新检索到的宏观微信舆情 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{articles_context}\n\n"
-                    f"【最新检索到的宏观国家与行业政策 (来自 zq_dtl_onenet_all)】:\n"
+                    f"【最新检索到的宏观国家与行业政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{policies_context}\n\n"
-                    f"【最新检索到的地方委办局政策 (来自 burneau_weiban_policy_dtl)】:\n"
+                    f"【最新检索到的地方委办局政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{weiban_context}\n\n"
-                    f"【最新检索到的上海宏观新闻 (来自 zq_dtl_shnews_yyy)】:\n"
+                    f"【最新检索到的上海宏观新闻 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{news_context}\n\n"
                     f"要求：返回一个 JSON 对象，必须且只能包含以下两个字段：\n"
                     f"1. 'title': 该汇编报告的专业主标题 (例如: '2026年中国全行业前沿趋势与商业洞察汇编报告'，要求有深度、有见解)\n"
@@ -936,13 +944,13 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"你是一个资深行业分析师。用户请求一份关于《{matched_key}》的深度分析报告。\n"
                     f"请为你设计并撰写一份结构完整、逻辑严密、措辞专业且高度相关的行业报告。每个章节字数在 350-400 字左右。\n"
                     f"我们在业务数据库中检索到了以下相关的最新行业微信舆情、最新行业政策与上海新闻动态，请灵活自然地融合这些数据与事实：\n\n"
-                    f"【最新检索到的行业微信舆情 (来自 weixin_article_dtl_unique)】:\n"
+                    f"【最新检索到的行业微信舆情 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{articles_context}\n\n"
-                    f"【最新检索到的国家与行业政策 (来自 zq_dtl_onenet_all)】:\n"
+                    f"【最新检索到的国家与行业政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{policies_context}\n\n"
-                    f"【最新检索到的地方委办局政策 (来自 burneau_weiban_policy_dtl)】:\n"
+                    f"【最新检索到的地方委办局政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{weiban_context}\n\n"
-                    f"【最新检索到的上海新闻 (来自 zq_dtl_shnews_yyy)】:\n"
+                    f"【最新检索到的上海新闻 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{news_context}\n\n"
                     f"要求：返回一个 JSON 对象，必须且只能包含以下三个字段：\n"
                     f"1. 'title': 该报告的专业主标题 (例如: '2026年中国{keyword_clean}行业前沿趋势与商业洞察报告')\n"
@@ -967,13 +975,13 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"【原报告基本结构】:\n"
                     f"导读摘要: {summary}\n"
                     f"章节大纲: {json.dumps(chapters, ensure_ascii=False)}\n\n"
-                    f"【最新检索到的行业微信舆情 (来自 weixin_article_dtl_unique)】:\n"
+                    f"【最新检索到的行业微信舆情 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{articles_context}\n\n"
-                    f"【最新检索到的国家与行业政策 (来自 zq_dtl_onenet_all)】:\n"
+                    f"【最新检索到的国家与行业政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{policies_context}\n\n"
-                    f"【最新检索到的地方委办局政策 (来自 burneau_weiban_policy_dtl)】:\n"
+                    f"【最新检索到的地方委办局政策 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{weiban_context}\n\n"
-                    f"【最新检索到的上海新闻 (来自 zq_dtl_shnews_yyy)】:\n"
+                    f"【最新检索到的上海新闻 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{news_context}\n\n"
                     f"要求：返回一个 JSON 对象，包含键 'summary' (对前言导读进行扩充和优化，字数在 150-200 字左右) 和 'chapters' (格式必须与原大纲一致，仅包含 'title' 和 'content' 字段)。例如：\n"
                     f"{{\n"
