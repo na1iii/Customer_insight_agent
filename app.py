@@ -44,34 +44,17 @@ import services.industry as industry
 import services.potential as potential
 import services.general_chat as general_chat
 import utils.db_helper as db
+from scripts.update_llm_regions import run_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    def init_db():
-        session = db.SessionLocal()
-        try:
-            latest = session.query(db.OpportunityArticle).order_by(db.OpportunityArticle.updated_at.desc()).first()
-            needs_rebuild = False
-            if not latest:
-                print("【System】商机库为空，开始后台静默执行商机数据库梳理...")
-                needs_rebuild = True
-            elif datetime.utcnow() - latest.updated_at > timedelta(hours=24):
-                print("【System】商机库数据已过期（>24小时），开始后台静默执行商机数据库梳理...")
-                needs_rebuild = True
-            else:
-                print("【System】商机库数据是最新的，跳过自动梳理。")
-            
-            if needs_rebuild:
-                db.rebuild_opportunity_articles(limit=50000, clear_existing=False)
-                print("【System】后台商机数据库梳理完成！")
-        except Exception as e:
-            print(f"【System】商机数据库梳理发生错误: {e}")
-        finally:
-            session.close()
-
-    # 在独立的后台线程中执行，不阻塞主线程启动
-    asyncio.get_event_loop().run_in_executor(None, init_db)
+    # 启动后台 AI 行政区更新任务 (每 60 秒运行一次)
+    ai_worker_task = asyncio.create_task(run_worker())
+    
     yield
+    
+    # 服务关闭时清理任务
+    ai_worker_task.cancel()
 
 app = FastAPI(title="AI 客户智能洞察智能体 API", lifespan=lifespan)
 

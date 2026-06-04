@@ -98,30 +98,17 @@ def _clean_text(value) -> str:
 
 
 def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit: int = 80) -> list[dict]:
-    """从商机预计算表加载区域 RAG 文档，保持与明细页一致的数据口径。"""
-    where_parts = ["is_valid = 1"]
-    params = {"limit": limit}
-    if not is_city_report:
-        where_parts.append("district = :district")
-        params["district"] = region_name
-
-    sql = text(f"""
-        SELECT title, abstract, release_time, source_name, link, district, ent_name,
-               industry, score, score_label, display_tags, matched_rules
-        FROM opportunity_articles
-        WHERE {' AND '.join(where_parts)}
-        ORDER BY score DESC, release_time DESC
-        LIMIT :limit
-    """)
-
+    """从 weixin_deepseek_extract_d 加载区域 RAG 文档，保持与明细页一致的数据口径。"""
     documents = []
     try:
-        with db.engine.connect() as conn:
-            rows = [dict(row) for row in conn.execute(sql, params).mappings().all()]
+        district_param = None if is_city_report else region_name
+        rows = db.fetch_weixin_extract_data(limit=limit, district=district_param)
+        rows.sort(key=lambda x: (x.get("score") or 0, x.get("release_time_raw") or ""), reverse=True)
     except Exception as exc:
         db.log_event(None, "regional", "WARNING", f"区域 RAG 文档加载失败: {exc}")
         return documents
 
+    import json
     for row in rows:
         district = _clean_text(row.get("district")) or region_name
         title = _clean_text(row.get("title")) or _clean_text(row.get("ent_name")) or "区域商机"
@@ -133,14 +120,14 @@ def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit:
             f"商机评分：{_clean_text(row.get('score'))}",
             f"标题：{title}",
             f"摘要：{_clean_text(row.get('abstract'))}",
-            f"标签：{_clean_text(row.get('display_tags'))}",
-            f"命中规则：{_clean_text(row.get('matched_rules'))}",
+            f"标签：{json.dumps(row.get('tags'), ensure_ascii=False)}",
+            f"命中规则：{json.dumps(row.get('hit'), ensure_ascii=False)}",
         ])
         documents.append({
             "title": title,
             "content": content,
-            "publish_date": _clean_text(row.get("release_time")),
-            "source": _clean_text(row.get("source_name")) or "opportunity_articles",
+            "publish_date": _clean_text(row.get("release_time_raw")),
+            "source": "weixin_deepseek_extract_d",
             "link": _clean_text(row.get("link")),
             "company": district,
             "district": district,
@@ -191,30 +178,34 @@ def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list
         return base
 
     sorted_docs = sorted(documents, key=lambda x: str(x.get("publish_date") or ""), reverse=True)
-    latest_3 = []
-    seen = set()
+    
+    title_links_map = {}
+    entities_set = set()
+    
     for doc in sorted_docs:
-        key = (doc.get("title"), doc.get("entity_name"))
-        if key in seen:
-            continue
-        seen.add(key)
-        latest_3.append(doc)
-        if len(latest_3) >= 3:
-            break
+        title = doc.get("title")
+        ent = doc.get("entity_name")
+        link = doc.get("link")
+        
+        if title:
+            if title not in title_links_map and len(title_links_map) < 3:
+                title_links_map[title] = link
+                
+            # 如果当前文档的标题在我们选中的前3个标题中，则收集其关联的企业
+            if title in title_links_map:
+                if ent and ent not in {"-", "无", "未知", "不适用", "NA"} and len(ent) >= 2:
+                    entities_set.add(ent)
 
     title_links = []
-    for item in latest_3:
-        title = item.get("title")
-        link = item.get("link")
-        if title:
-            if link:
-                title_links.append(f"[{title}]({link})")
-            else:
-                title_links.append(title)
+    for title, link in title_links_map.items():
+        if link:
+            title_links.append(f"[{title}]({link})")
+        else:
+            title_links.append(title)
                 
     titles_str = "、".join(title_links)
-    entities = "、".join([item.get("entity_name") for item in latest_3 if item.get("entity_name")])
-    
+    entities = "、".join(list(entities_set)[:5])
+
     if is_city_report:
         return f"{base} 最新商机数据进一步显示，近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '多家企业'}，建议按 HOT 等级与产业方向优先分区跟进。"
     return f"{base} 最新商机数据进一步显示，{region_name}近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
