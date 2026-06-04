@@ -9,6 +9,7 @@ import hashlib
 import uuid
 import json
 import asyncio
+import time
 from openai import AsyncOpenAI
 from collections import Counter
 from datetime import datetime, timedelta
@@ -536,10 +537,10 @@ def detect_article_region(row: dict) -> str:
     """根据文章字段识别上海行政区。"""
     text_all = "".join([
         row.get("Scope") or "",
-        row.get("name") or "",
-        row.get("title") or "",
-        row.get("Abstract") or "",
-        row.get("content") or "",
+        row.get("name") or row.get("EntName") or "",
+        row.get("title") or row.get("article_title") or "",
+        row.get("Abstract") or row.get("abstract") or "",
+        row.get("content") or row.get("article_content") or row.get("article_content_prefix") or "",
     ])
     for alias, district in REGION_ALIASES.items():
         if alias in text_all:
@@ -1293,16 +1294,215 @@ async def _async_batch_llm_judge(rows: list) -> list:
                 
     return final_results
 
-    return {
-        "status": "success",
-        "district": district,
-        "count": len(articles),
-        "group_count": live_data.get("group_count", 0),
-    }
-
 def get_articles(district: str = None) -> dict:
     """返回前端商机列表所需的数据结构，兼容 /api/articles。"""
-    return get_articles_from_result_table(district=district)
+    raw_articles = fetch_weixin_extract_data(limit=1000, district=district)
+    
+    groups_dict = {district: {}} if district else {d_name: {} for d_name in DISTRICTS}
+    
+    for row in raw_articles:
+        group_name = (row.get("district") or "其他").strip() or "其他"
+        if group_name not in groups_dict:
+            groups_dict[group_name] = {}
+            
+        ent_name = (row.get("ent_name") or "未命名企业").strip()
+        
+        # 过滤掉大模型提取失败或无有效名称的占位符
+        if not ent_name or ent_name in {"-", "无", "未知", "不适用", "NA"} or len(ent_name) < 2:
+            continue
+            
+        release_time_raw = row.get("release_time_raw") or ""
+        score = row.get("score") or 0
+        score_label = row.get("score_label") or "关注"
+        
+        source_item = {
+            "source_name": row.get("wechat_name") or "微信数据",
+            "release_time": format_release_time(release_time_raw),
+            "release_time_raw": release_time_raw,
+            "link": row.get("link") or "",
+            "title": row.get("title") or "",
+        }
+
+        if ent_name in groups_dict[group_name]:
+            existing = groups_dict[group_name][ent_name]
+            existing["sources"].append(source_item)
+            
+            # Merge tags and hit
+            existing_tags = set(existing.get("display_tags", []))
+            for tag in (row.get("tags") or []):
+                existing_tags.add(tag)
+            existing["display_tags"] = list(existing_tags)
+            
+            existing_hit = set(existing.get("hit", []))
+            for h in (row.get("hit") or []):
+                existing_hit.add(h)
+            existing["hit"] = list(existing_hit)
+            
+            # If current row has a higher score, update the main display fields
+            if score > existing["score"]:
+                existing["score"] = score
+                existing["score_label"] = score_label
+                existing["score_class"] = "score-red" if score >= 85 else "score-blue"
+                existing["title"] = row.get("title") or ""
+                existing["abstract"] = row.get("abstract") or ""
+                existing["release_time"] = format_release_time(release_time_raw)
+                existing["release_time_raw"] = release_time_raw
+                existing["link"] = row.get("link") or ""
+                existing["source_name"] = row.get("wechat_name") or "微信数据"
+                existing["industry"] = row.get("industry") or ""
+        else:
+            groups_dict[group_name][ent_name] = {
+                "ent_name": ent_name,
+                "abstract": row.get("abstract") or "",
+                "title": row.get("title") or "",
+                "release_time": format_release_time(release_time_raw),
+                "release_time_raw": release_time_raw,
+                "score": score,
+                "score_label": score_label,
+                "score_class": "score-red" if score >= 85 else "score-blue",
+                "source_name": row.get("wechat_name") or "微信数据",
+                "link": row.get("link") or "",
+                "industry": row.get("industry") or "",
+                "region": group_name,
+                "sort_group": group_name,
+                "hit": row.get("hit") or [],
+                "sources": [source_item],
+                "display_tags": row.get("tags") or [],
+            }
+        
+    groups = []
+    total_count = 0
+    for group_name, articles_map in groups_dict.items():
+        articles = list(articles_map.values())
+        if group_name == "其他" and not articles:
+            continue
+        articles.sort(key=lambda article: (article["score"], article["release_time_raw"]), reverse=True)
+        groups.append({"name": group_name, "count": len(articles), "articles": articles})
+        total_count += len(articles)
+
+    def get_group_order(group_name: str) -> int:
+        try:
+            return DISTRICTS.index(group_name)
+        except ValueError:
+            return 999
+
+    groups.sort(key=lambda group: get_group_order(group["name"]))
+    return {"date": get_today_display(), "total_count": total_count, "group_count": len(groups), "groups": groups}
+
+_WEIXIN_EXTRACT_CACHE = {}
+
+def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
+    """直接查询 weixin_deepseek_extract_d 表并按规则进行打分和过滤（附带5分钟内存缓存）。"""
+    global _WEIXIN_EXTRACT_CACHE
+    cache_key = f"{limit}_{district}"
+    
+    if cache_key in _WEIXIN_EXTRACT_CACHE:
+        cached_time, cached_data = _WEIXIN_EXTRACT_CACHE[cache_key]
+        if time.time() - cached_time < 300:
+            return cached_data
+
+    sql = text("""
+        SELECT a.id, a.EntName, a.EnterpriseNature, a.Industry1, a.Industry2, a.Industry3, 
+               a.article_title, a.Abstract, a.Tag_SS, a.Tag_IPO, a.Tag_RZ, a.Tag_SG, a.OtherNature, 
+               a.publish_time, a.article_url, a.Scope, a.wechat_name, 
+               LEFT(a.article_content, 5000) AS article_content_prefix,
+               c.District as ai_district
+        FROM weixin_deepseek_extract_d a
+        LEFT JOIN ent_region_llm_cache c ON a.EntName = c.EntName
+        ORDER BY a.publish_time DESC
+        LIMIT :limit
+    """)
+    rows = query_business_db(str(sql), {"limit": limit})
+    
+    results = []
+    for row in rows:
+        ent_name = (row.get("EntName") or "").strip()
+        ent_nature = (row.get("EnterpriseNature") or "").strip()
+        ind1 = (row.get("Industry1") or "").strip()
+        ind2 = (row.get("Industry2") or "").strip()
+        ind3 = (row.get("Industry3") or "").strip()
+        title = (row.get("article_title") or "").strip()
+        abstract = (row.get("Abstract") or "").strip()
+        
+        # 过滤
+        if not ent_name or ent_nature == "非企":
+            continue
+        if has_any(ent_name, ["大学", "研究院", "学院"]):
+            continue
+        if has_any(ind1 + ind2 + ind3, ["餐饮", "服务"]):
+            continue
+        if has_any(title + abstract, CATERING_KEYWORDS):
+            continue
+            
+        # 优先使用 AI 划分的行政区，如果 AI 还没跑完，则降级使用正则匹配
+        ai_district = row.get("ai_district")
+        if ai_district:
+            region = ai_district
+        else:
+            region = detect_article_region(row)
+            
+        if district and district != "上海市" and district != region:
+            continue
+
+        # 动态打分
+        score = 10
+        hit = []
+        
+        # 标签加分
+        tag_ss = (row.get("Tag_SS") or "").strip()
+        tag_ipo = (row.get("Tag_IPO") or "").strip()
+        tag_rz = (row.get("Tag_RZ") or "").strip()
+        tag_sg = (row.get("Tag_SG") or "").strip()
+        
+        if tag_sg:
+            score += 15
+            hit.append("资本融资")
+        if tag_ss == "是" or tag_ipo == "是" or tag_rz:
+            if "资本融资" not in hit:
+                score += 15
+                hit.append("资本融资")
+                
+        # 文本匹配加分
+        text_all = title + " " + abstract
+        for rule_name, points, keywords in SCORING_RULES:
+            if has_any(text_all, keywords):
+                if rule_name not in hit:
+                    score += points
+                    hit.append(rule_name)
+                    
+        # 性质加分
+        other_nature = (row.get("OtherNature") or "").strip()
+        if other_nature and not has_any(other_nature, ["非企", "无"]):
+            score += 10
+            if "企业资质" not in hit:
+                hit.append("企业资质")
+
+        score = min(score, 100)
+        score_label = "HOT" if score >= 85 else "关注"
+            
+        results.append({
+            "ent_name": ent_name,
+            "title": title,
+            "abstract": abstract,
+            "content": "",
+            "link": row.get("article_url"),
+            "release_time_raw": str(row.get("publish_time") or ""),
+            "district": region,
+            "industry": ind1,
+            "score": score,
+            "score_label": score_label,
+            "hit": hit,
+            "tags": list(filter(None, [
+                "上市" if tag_ss == "是" else "",
+                "IPO" if tag_ipo == "是" else "",
+                tag_rz, tag_sg
+            ])),
+            "wechat_name": (row.get("wechat_name") or "").strip(),
+            "raw_row": row
+        })
+        
+    _WEIXIN_EXTRACT_CACHE[cache_key] = (time.time(), results)
+    return results
 
 def get_articles_summary(district: str = None) -> dict:
     """获取商机汇总指标，供 regional.py 生成聊天卡片；district 为空时统计上海市全部区域。"""
@@ -1315,18 +1515,33 @@ def get_articles_summary(district: str = None) -> dict:
         "district_counts": [],
     }
     try:
-        articles_data = get_articles(district=district)
+        raw_articles = fetch_weixin_extract_data(limit=1000, district=district)
     except Exception as e:
         print(f"【Article Summary Error】获取 {district or '上海市'} 商机汇总失败: {e}")
         return empty_summary
 
-    articles = []
+    unique_articles_map = {}
+    for row in raw_articles:
+        d = (row.get("district") or "其他").strip() or "其他"
+        ent = (row.get("ent_name") or "未命名企业").strip()
+        
+        if not ent or ent in {"-", "无", "未知", "不适用", "NA"} or len(ent) < 2:
+            continue
+            
+        key = (d, ent)
+        score = row.get("score") or 0
+        if key not in unique_articles_map:
+            unique_articles_map[key] = row
+        else:
+            if score > (unique_articles_map[key].get("score") or 0):
+                unique_articles_map[key] = row
+                
+    articles = list(unique_articles_map.values())
+
     district_counter = Counter()
-    for group in articles_data.get("groups", []):
-        group_articles = group.get("articles", [])
-        if group.get("name"):
-            district_counter[group.get("name")] += len(group_articles)
-        articles.extend(group_articles)
+    for article in articles:
+        if article.get("district"):
+            district_counter[article.get("district")] += 1
 
     hot_count = sum(1 for article in articles if article.get("score_label") == "HOT")
     watch_count = sum(1 for article in articles if article.get("score_label") == "关注")

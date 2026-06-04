@@ -68,14 +68,14 @@ INDUSTRY_KEYWORDS = [
 ]
 
 NOISE_WORDS = [
-    "推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "商机", "企业", "有哪些",
+    "上海市", "上海", "推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "商机", "企业", "有哪些",
     "给我", "帮我", "筛选", "查询", "查看", "导出", "excel", "Excel", "表格", "一批",
 ]
 
 # SIGNAL_RULES 已废弃
 SIGNAL_RULES = []
 
-DEFAULT_SCORE_MIN = 85
+DEFAULT_SCORE_MIN = 60
 DEFAULT_LIMIT = 20
 
 
@@ -147,86 +147,73 @@ def _build_like_filter(field_exprs: List[str], param_name: str) -> str:
 
 
 def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> List[Dict[str, Any]]:
-    where_parts = [
-        "`企业名称` IS NOT NULL",
-        "`企业名称` != ''",
-        "(`榜单废弃` IS NULL OR `榜单废弃` = '' OR `榜单废弃` = '否')",
-        "(`资质名称` IS NULL OR `资质名称` NOT LIKE '%榜单废弃%')",
-    ]
-    params: Dict[str, Any] = {"limit": limit}
-
+    import utils.db_helper as db
+    import json
     district = filters.get("district")
-    if district:
-        district_short = district.replace("新区", "").replace("区", "")
-        where_parts.append("(" + " OR ".join([
-            "`客户区局` LIKE :district_full",
-            "`客户区局` LIKE :district_short",
-            "`客户经理所属部门` LIKE :district_full",
-            "`客户经理所属部门` LIKE :district_short",
-            "`省份` LIKE :district_full",
-            "`省份` LIKE :district_short",
-            "`城市` LIKE :district_full",
-            "`城市` LIKE :district_short",
-            "`备注` LIKE :district_full",
-            "`备注` LIKE :district_short",
-        ]) + ")")
-        params["district_full"] = f"%{district}%"
-        params["district_short"] = f"%{district_short}%"
-
-    industry = filters.get("industry")
-    if industry:
-        where_parts.append(_build_like_filter(["`工商行业`", "`归属行业`", "`根营销行业一层`", "`集团行业一层`", "`资质名称`", "`企业名称`"], "industry"))
-        params["industry"] = f"%{industry}%"
-
-    keyword = filters.get("keyword")
-    if keyword:
-        where_parts.append(_build_like_filter(["`企业名称`", "`企业简称`", "`客户名称`", "`工商行业`", "`归属行业`", "`资质名称`", "`榜单名称`"], "keyword"))
-        params["keyword"] = f"%{keyword}%"
-
-    sql = text(f"""
-        SELECT
-            c.`企业名称` AS name,
-            c.`企业简称` AS short_name,
-            c.`客户名称` AS customer_name,
-            c.`客户区局` AS region,
-            c.`省份` AS province,
-            c.`城市` AS city,
-            c.`工商行业` AS industry,
-            c.`归属行业` AS industry_alt,
-            c.`根营销行业一层` AS marketing_industry_l1,
-            c.`集团行业一层` AS group_industry_l1,
-            c.`榜单名称` AS ranking_name,
-            c.`榜单类型` AS ranking_type,
-            c.`资质名称` AS qualification,
-            c.`2024年营业收入（万元）` AS revenue_2024,
-            c.`企业25年收入_万元` AS revenue_2025,
-            c.`营业收入增长率` AS growth_rate,
-            c.`补贴金额万元` AS subsidy_amount,
-            c.`补贴金额规则` AS subsidy_rule,
-            c.`客户经理名称` AS account_manager,
-            c.`客户经理所属部门` AS account_manager_department,
-            c.`链接` AS ranking_link,
-            c.`是否入选新希望客户` AS is_new_hope_customer,
-            c.`企业注册时间` AS registered_at,
-            o.`score` AS regional_score,
-            o.`matched_rules` AS signals_json,
-            o.`title` AS latest_title,
-            o.`release_time` AS latest_date,
-            o.`link` AS latest_link
-        FROM ranking_ent_dtl_clue c
-        LEFT JOIN (
-            SELECT ent_name, MAX(score) AS score, MAX(matched_rules) AS matched_rules,
-                   MAX(title) AS title, MAX(release_time) AS release_time, MAX(link) AS link
-            FROM opportunity_articles
-            GROUP BY ent_name
-        ) o ON c.`企业名称` = o.`ent_name`
-        WHERE {' AND '.join(where_parts)}
-        ORDER BY IFNULL(o.score, 0) DESC
-        LIMIT :limit
-    """)
-
-    with db.engine.connect() as conn:
-        return [dict(row) for row in conn.execute(sql, params).mappings().all()]
+    district_param = None if district == "上海市" else district
+    
+    # We fetch more than limit because we will filter in python
+    raw_data = db.fetch_weixin_extract_data(limit=1000, district=district_param)
+    
+    keyword = filters.get("keyword") or ""
+    industry = filters.get("industry") or ""
+    
+    keyword_lower = keyword.lower()
+    industry_lower = industry.lower()
+    
+    results = []
+    for row in raw_data:
+        ent_name = row.get("ent_name") or ""
+        ent_name = ent_name.strip()
+        
+        # 过滤掉大模型提取失败或无有效名称的占位符
+        if not ent_name or ent_name in {"-", "无", "未知", "不适用", "NA"} or len(ent_name) < 2:
+            continue
+            
+        ind = row.get("industry") or ""
+        title = row.get("title") or ""
+        
+        if industry_lower and industry_lower not in ind.lower() and industry_lower not in ent_name.lower():
+            continue
+            
+        if keyword_lower and keyword_lower not in ent_name.lower() and keyword_lower not in title.lower() and keyword_lower not in ind.lower():
+            continue
+            
+        # Map to the format expected by the rest of potential.py
+        results.append({
+            "name": ent_name,
+            "short_name": "", 
+            "customer_name": ent_name,
+            "region": row.get("district"),
+            "province": "上海市",
+            "city": "上海市",
+            "industry": ind,
+            "industry_alt": "",
+            "marketing_industry_l1": "",
+            "group_industry_l1": "",
+            "ranking_name": "",
+            "ranking_type": "",
+            "qualification": "",
+            "revenue_2024": "",
+            "revenue_2025": "",
+            "growth_rate": "",
+            "subsidy_amount": "",
+            "subsidy_rule": "",
+            "account_manager": "",
+            "account_manager_department": "",
+            "ranking_link": "",
+            "is_new_hope_customer": "",
+            "registered_at": "",
+            "regional_score": row.get("score") or 0,
+            "signals_json": json.dumps((row.get("tags") or []) + (row.get("hit") or []), ensure_ascii=False),
+            "latest_title": title,
+            "latest_date": row.get("release_time_raw"),
+            "latest_link": row.get("link"),
+        })
+        if len(results) >= limit:
+            break
+            
+    return results
 
 
 def fetch_enterprise_signals(candidates: List[Dict[str, Any]], max_candidates: int = 100) -> Dict[str, Dict[str, Any]]:
@@ -279,12 +266,7 @@ def build_next_action(row: Dict[str, Any], tags: List[str]) -> str:
 def _build_enterprise_rag_document(row: Dict[str, Any]) -> Dict[str, Any]:
     name = _clean_text(row.get("name"))
     region = _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(row.get("province"))
-    industry = (
-        _clean_text(row.get("industry"))
-        or _clean_text(row.get("industry_alt"))
-        or _clean_text(row.get("marketing_industry_l1"))
-        or _clean_text(row.get("group_industry_l1"))
-    )
+    industry = _clean_text(row.get("industry"))
     import json
     try:
         signals = json.loads(row.get("signals_json") or "[]")
@@ -292,19 +274,8 @@ def _build_enterprise_rag_document(row: Dict[str, Any]) -> Dict[str, Any]:
         signals = []
     content = "\\n".join([
         f"企业名称：{name}",
-        f"企业简称：{_clean_text(row.get('short_name'))}",
         f"行政区：{region}",
         f"行业：{industry}",
-        f"榜单资质：{_clean_text(row.get('qualification'))}",
-        f"榜单名称：{_clean_text(row.get('ranking_name'))}",
-        f"榜单类型：{_clean_text(row.get('ranking_type'))}",
-        f"2024年营业收入：{_clean_text(row.get('revenue_2024'))}",
-        f"2025年收入：{_clean_text(row.get('revenue_2025'))}",
-        f"营业收入增长率：{_clean_text(row.get('growth_rate'))}",
-        f"补贴金额：{_clean_text(row.get('subsidy_amount'))}",
-        f"补贴规则：{_clean_text(row.get('subsidy_rule'))}",
-        f"是否入选新希望客户：{_clean_text(row.get('is_new_hope_customer'))}",
-        f"客户经理：{_clean_text(row.get('account_manager'))}",
         f"近期新闻信号：{'、'.join(signals)}",
         f"最新动态标题：{_clean_text(row.get('latest_title'))}",
     ])
@@ -312,8 +283,8 @@ def _build_enterprise_rag_document(row: Dict[str, Any]) -> Dict[str, Any]:
         "title": name or "高潜候选企业",
         "content": content,
         "publish_date": _clean_text(row.get("latest_date")) or _clean_text(row.get("registered_at")) or datetime.now().strftime("%Y-%m-%d"),
-        "source": "ranking_ent_dtl_clue",
-        "link": _clean_text(row.get("latest_link")) or _clean_text(row.get("ranking_link")),
+        "source": "weixin_deepseek_extract_d",
+        "link": _clean_text(row.get("latest_link")),
         "company": name,
         "district": region,
         "industry": industry,
@@ -495,7 +466,7 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
         item["rag_evidence"] = []
         final_score = int(regional_score * 0.8)
         item["score"] = final_score
-        item["level"] = "HOT" if final_score >= 85 else "关注"
+        item["level"] = "HOT" if final_score >= 60 else "关注"
         return item
 
     score = float(rag_info.get("best_score") or 0.0)
@@ -506,7 +477,7 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
     rag_scaled = int(score * 100)
     final_score = int(regional_score * 0.8 + rag_scaled * 0.2)
     item["score"] = min(100, final_score)
-    item["level"] = "HOT" if item["score"] >= 85 else "关注"
+    item["level"] = "HOT" if item["score"] >= 60 else "关注"
     
     if final_score > int(regional_score * 0.8):
         item.setdefault("score_parts", {})["RAG加权分"] = int(rag_scaled * 0.2)
@@ -518,34 +489,11 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
             item["reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
     return item
 
-    score = float(rag_info.get("best_score") or 0.0)
-    bonus = _rag_bonus(score)
-    evidence = rag_info.get("evidence") or []
-    item["rag_score"] = round(score, 4)
-    item["rag_evidence"] = evidence
-    if bonus:
-        item["score"] = min(100, int(item.get("score") or 0) + bonus)
-        item["level"] = "HOT" if item["score"] >= 80 else "关注"
-        item.setdefault("score_parts", {})["RAG证据"] = bonus
-        signals = item.setdefault("signals", [])
-        if "RAG强相关证据" not in signals:
-            signals.append("RAG强相关证据")
-        if evidence:
-            title = evidence[0].get("title") or "相关证据"
-            item["reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
-    return item
-
 
 def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score_parts: Dict[str, int]) -> Dict[str, Any]:
     region = _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(row.get("province"))
-    industry = (
-        _clean_text(row.get("industry"))
-        or _clean_text(row.get("industry_alt"))
-        or _clean_text(row.get("marketing_industry_l1"))
-        or _clean_text(row.get("group_industry_l1"))
-        or "未标注"
-    )
-    level = "HOT" if score >= 85 else "关注"
+    industry = _clean_text(row.get("industry")) or "未标注"
+    level = "HOT" if score >= 60 else "关注"
     return {
         "name": _clean_text(row.get("name")),
         "short_name": _clean_text(row.get("short_name")),
@@ -556,16 +504,16 @@ def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score
         "signals": tags[:6],
         "reason": build_reason(row, tags),
         "next_action": build_next_action(row, tags),
-        "account_manager": _clean_text(row.get("account_manager")) or "待分配",
-        "qualification": _clean_text(row.get("qualification")),
-        "revenue_2024": _clean_text(row.get("revenue_2024")),
-        "growth_rate": _clean_text(row.get("growth_rate")),
-        "subsidy_amount": _clean_text(row.get("subsidy_amount")),
-        "subsidy_rule": _clean_text(row.get("subsidy_rule")),
-        "ranking_name": _clean_text(row.get("ranking_name")),
-        "ranking_type": _clean_text(row.get("ranking_type")),
-        "ranking_link": _clean_text(row.get("ranking_link")),
-        "is_new_hope_customer": _clean_text(row.get("is_new_hope_customer")),
+        "account_manager": "",
+        "qualification": "",
+        "revenue_2024": "",
+        "growth_rate": "",
+        "subsidy_amount": "",
+        "subsidy_rule": "",
+        "ranking_name": "",
+        "ranking_type": "",
+        "ranking_link": "",
+        "is_new_hope_customer": "",
         "latest_title": _clean_text(row.get("latest_title")),
         "latest_date": _clean_text(row.get("latest_date")),
         "link": _clean_text(row.get("latest_link")),
@@ -584,7 +532,7 @@ def _fallback_from_mock(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
             "name": client.get("name"),
             "short_name": "",
             "score": score,
-            "level": "HOT" if score >= 80 else "关注",
+            "level": "HOT" if score >= 60 else "关注",
             "industry": client.get("industry"),
             "region": filters.get("district") or "未标注",
             "signals": ["Mock兜底", "优质线索"],
@@ -603,7 +551,7 @@ def _fallback_from_mock(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
     return items[:limit] or []
 
 
-def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, skip_rag: bool = False) -> List[Dict[str, Any]]:
+def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, skip_rag: bool = False) -> Tuple[List[Dict[str, Any]], int]:
     try:
         candidates = fetch_candidate_enterprises(filters)
         company_rag = {} if skip_rag else _run_potential_rag(filters, candidates)
@@ -630,22 +578,23 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, ski
 
         if skip_rag:
             ranked_all.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
-            return ranked_all[:limit]
+            return ranked_all[:limit], len(ranked_all)
 
         recommendations.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
         if recommendations:
-            return recommendations[:limit]
+            return recommendations[:limit], len(recommendations)
 
         # 行政区类查询如果没有超过阈值的企业，不直接返回空；保底返回该区域综合得分最高的若干企业。
         ranked_all.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
         if ranked_all and (filters.get("district") or filters.get("industry") or filters.get("keyword")):
-            return ranked_all[: min(limit, 10)]
-        return []
+            return ranked_all[: min(limit, 10)], len(ranked_all)
+        return [], 0
     except Exception as exc:
         import traceback
         import utils.db_helper as db
         db.log_event(None, "potential", "ERROR", f"高潜客户数据库检索失败，启用兜底数据: {exc}", traceback.format_exc())
-        return _fallback_from_mock(filters, limit=limit)
+        mock_items = _fallback_from_mock(filters, limit=limit)
+        return mock_items, len(mock_items)
 
 
 
@@ -721,7 +670,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
     filters = parse_filters(keyword)
     db.log_event(user_id, "potential", "INFO", f"开始检索高潜客户线索。过滤条件: {filters}")
 
-    items = get_recommendations(filters)
+    items, total_count = get_recommendations(filters)
     
     if items:
         try:
@@ -739,21 +688,17 @@ def handle(keyword: str, user_id: int = None) -> dict:
     if items:
         strong_count = sum(1 for item in items if int(item.get("score") or 0) >= int(filters.get("score_min") or DEFAULT_SCORE_MIN))
         if strong_count:
-            summary = f"已为您筛选出 {len(items)} 家{district_label if district_label != '全市' else ''}高潜客户，排序综合考虑企业资质、收入增长、政策补贴和近期新闻信号。"
+            summary = f"满足过滤条件的高潜企业共有 {total_count} 家。为保证质量，已为您精选出排名前 {len(items)} 家进行展示。如需查看完整清单，请点击下方按钮导出完整版 Excel 表格。"
         else:
-            summary = f"暂未发现评分超过 {filters.get('score_min')} 分的严格高潜客户，已为您返回{district_label if district_label != '全市' else ''}综合得分靠前的候选企业供参考。"
+            summary = f"暂未发现评分严格达标的企业，已为您放宽条件，展示 {len(items)} 家候选企业供参考。您可以点击下方按钮导出更多候选结果。"
     else:
         summary = "暂未筛选到符合条件的高潜客户，建议放宽区域、行业或评分条件后重试。"
 
     actions = []
     if items:
-        safe_scope = filters.get("district") or filters.get("industry") or filters.get("keyword") or "全市"
-        import os
-        excel_path = write_items_to_excel(items, safe_scope)
-        excel_url = f"/static/generated/{os.path.basename(excel_path)}"
-        
+        excel_url = _build_export_url(filters)
         actions.append({
-            "label": "导出高潜客户 Excel",
+            "label": f"导出所有满足条件的高潜客户 ({total_count}家)",
             "type": "download",
             "url": excel_url,
         })
@@ -815,7 +760,7 @@ def export_excel(
         filters["keyword"] = keyword
     filters["score_min"] = score_min
 
-    items = get_recommendations(filters, limit=500, skip_rag=True)
+    items, _ = get_recommendations(filters, limit=500, skip_rag=True)
 
     safe_scope = district or industry or keyword or "全市"
     excel_path = write_items_to_excel(items, safe_scope)
