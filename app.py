@@ -197,8 +197,12 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
         elif resolved_scene == "general_chat":
             # 通用问答流式输出
             async for chunk in general_chat.handle_stream(user_text, user_id=user_id, history=history):
-                msg_content += chunk
-                yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
+                if isinstance(chunk, dict):
+                    data_payload = chunk
+                    yield f"data: {json.dumps({'type': 'payload', 'payload': chunk}, ensure_ascii=False)}\n\n"
+                else:
+                    msg_content += chunk
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
                 
             db.log_event(user_id, resolved_scene, "INFO", f"通用对话查询成功，已流式输出解答。")
             

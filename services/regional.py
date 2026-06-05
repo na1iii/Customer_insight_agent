@@ -254,7 +254,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
 
     db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片。")
 
-    # 与 /api/articles 明细页保持同一数据口径：均读取 opportunity_articles 预计算结果表。
+    # 与 /api/articles 明细页保持同一数据口径：均读取 weixin_deepseek_extract_d 大模型挖掘结果。
     # 上海市报告不传 district，明细页默认按 16 个区折叠展示全部商机。
     summary = db.get_articles_summary(None if is_city_report else region_name)
     detail_url = "/ui_1.html" if is_city_report else f"/ui_1.html?district={quote(region_name)}"
