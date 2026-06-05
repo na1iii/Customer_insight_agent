@@ -8,6 +8,44 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        const renderer = new marked.Renderer();
+        renderer.link = function() {
+            if (typeof arguments[0] === 'object') {
+                const token = arguments[0];
+                const href = token.href;
+                const title = token.title ? ` title="${token.title}"` : '';
+                const text = this.parser.parseInline(token.tokens);
+                return `<a target="_blank" rel="noopener noreferrer" href="${href}"${title}>${text}</a>`;
+            }
+            let link = marked.Renderer.prototype.link.apply(this, arguments);
+            if (link) {
+                return link.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+            }
+            return link;
+        };
+        marked.use({ renderer: renderer });
+
+        // 自定义解析包装，修复 marked.js 在中文字符间无法正确解析 **加粗** 的 bug
+        function parseMarkdown(text, payload = null) {
+            if (!text) return "";
+            // 将文本中未被解析的 **xxx** 转换为 <strong>xxx</strong>
+            // 使用非贪婪匹配且不包含换行符的内容
+            let processed = text.replace(/\*\*([^\n*]+?)\*\*/g, '<strong>$1</strong>');
+            
+            if (payload && payload.type === 'citations' && payload.items) {
+                processed = processed.replace(/\[(\d+)\]/g, (match, indexStr) => {
+                    let docIndex = parseInt(indexStr) - 1;
+                    if (payload.items[docIndex]) {
+                        let doc = payload.items[docIndex];
+                        return `<a href="${doc.link}" target="_blank" class="citation-badge" title="${doc.title}">[${indexStr}]</a>`;
+                    }
+                    return match;
+                });
+            }
+            return marked.parse(processed);
+        }
+    </script>
     <style>
         :root {
             --bg-primary: #060913;
@@ -708,6 +746,42 @@
             font-weight: 500;
             margin-right: 6px;
             display: inline-block;
+        }
+
+        .citation-badge {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            vertical-align: super;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 4px;
+            padding: 2px 4px;
+            margin: 0 2px;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .citation-badge:hover {
+            background: rgba(59, 130, 246, 0.25);
+            color: #93c5fd;
+            transform: translateY(-1px);
+        }
+
+        :root.light-theme .citation-badge {
+            background: rgba(37, 99, 235, 0.1);
+            color: #1d4ed8;
+            border-color: rgba(37, 99, 235, 0.2);
+        }
+
+        :root.light-theme .citation-badge:hover {
+            background: rgba(37, 99, 235, 0.2);
+            color: #1e3a8a;
         }
 
         /* 渲染卡片：长图 */
@@ -2234,6 +2308,9 @@
                                         const p = document.createElement('div'); p.className = 'bubble-payload-area';
                                         bubbleEl.appendChild(c);
                                         bubbleEl.appendChild(p);
+                                        if (bubbleEl._payload) {
+                                            renderPayload(p, bubbleEl._payload);
+                                        }
                                     }
                                     accumulatedText += parsed.content;
                                     if (!updateScheduled) {
@@ -2241,23 +2318,19 @@
                                         requestAnimationFrame(() => {
                                             if (bubbleEl) {
                                                 const c = bubbleEl.querySelector('.bubble-content-area');
-                                                if (c) c.innerHTML = marked.parse(accumulatedText);
+                                                if (c) c.innerHTML = parseMarkdown(accumulatedText, bubbleEl._payload);
                                                 scrollToBottom();
                                             }
                                             updateScheduled = false;
                                         });
                                     }
                                 } else if (parsed.type === 'payload') {
-                                    if (!bubbleEl.querySelector('.bubble-payload-area')) {
-                                        bubbleEl.innerHTML = '';
-                                        const c = document.createElement('div'); c.className = 'bubble-content-area';
-                                        const p = document.createElement('div'); p.className = 'bubble-payload-area';
-                                        bubbleEl.appendChild(c);
-                                        bubbleEl.appendChild(p);
-                                    }
+                                    bubbleEl._payload = parsed.payload;
                                     const p = bubbleEl.querySelector('.bubble-payload-area');
-                                    renderPayload(p, parsed.payload);
-                                    scrollToBottom();
+                                    if (p) {
+                                        renderPayload(p, parsed.payload);
+                                        scrollToBottom();
+                                    }
                                 } else if (parsed.type === 'done') {
                                     bubbleEl.dataset.messageId = parsed.message_id;
                                     const activeTitleEl = document.getElementById(`title-${activeConversationId}`);
@@ -2289,20 +2362,19 @@
                                     const p = document.createElement('div'); p.className = 'bubble-payload-area';
                                     bubbleEl.appendChild(c);
                                     bubbleEl.appendChild(p);
+                                    if (bubbleEl._payload) {
+                                        renderPayload(p, bubbleEl._payload);
+                                    }
                                 }
                                 accumulatedText += parsed.content;
                                 const c = bubbleEl.querySelector('.bubble-content-area');
-                                if (c) c.innerHTML = marked.parse(accumulatedText);
+                                if (c) c.innerHTML = parseMarkdown(accumulatedText, bubbleEl._payload);
                             } else if (parsed.type === 'payload') {
-                                if (!bubbleEl.querySelector('.bubble-payload-area')) {
-                                    bubbleEl.innerHTML = '';
-                                    const c = document.createElement('div'); c.className = 'bubble-content-area';
-                                    const p = document.createElement('div'); p.className = 'bubble-payload-area';
-                                    bubbleEl.appendChild(c);
-                                    bubbleEl.appendChild(p);
-                                }
+                                bubbleEl._payload = parsed.payload;
                                 const p = bubbleEl.querySelector('.bubble-payload-area');
-                                renderPayload(p, parsed.payload);
+                                if (p) {
+                                    renderPayload(p, parsed.payload);
+                                }
                             } else if (parsed.type === 'error') {
                                 bubbleEl.innerHTML += `<div style="color:#ef4444;margin-top:10px;">❌ <b>流式处理错误</b>：${parsed.message}</div>`;
                             }
@@ -2378,20 +2450,24 @@
         function appendBotBubble(text, payload = null) {
             const bubble = createBotBubblePlaceholder();
             if (payload) {
+                bubble._payload = payload;
                 const c = document.createElement('div');
                 c.className = 'bubble-content-area';
-                c.innerHTML = marked.parse(text);
+                c.innerHTML = parseMarkdown(text, payload);
                 const p = document.createElement('div');
                 p.className = 'bubble-payload-area';
                 bubble.appendChild(c);
                 bubble.appendChild(p);
                 renderPayload(p, payload);
             } else {
-                bubble.innerHTML = marked.parse(text);
+                bubble.innerHTML = parseMarkdown(text);
             }
         }
 
         function renderPayload(bubble, payload) {
+            if (payload.type === 'citations') {
+                return; // 仅使用内联渲染，不展示底部卡片
+            }
             if (payload.type === 'image_link') {
                 const card = document.createElement('div');
                 card.className = 'card-img-container';
