@@ -69,7 +69,7 @@ INDUSTRY_KEYWORDS = [
 
 NOISE_WORDS = [
     "上海市", "上海", "推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "商机", "企业", "有哪些",
-    "给我", "帮我", "筛选", "查询", "查看", "导出", "excel", "Excel", "表格", "一批",
+    "给我", "帮我", "筛选", "查询", "查看", "导出", "excel", "Excel", "表格", "一批", "一份", "清单",
 ]
 
 # SIGNAL_RULES 已废弃
@@ -586,7 +586,7 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, ski
 
         # 行政区类查询如果没有超过阈值的企业，不直接返回空；保底返回该区域综合得分最高的若干企业。
         ranked_all.sort(key=lambda item: (item["score"], item.get("rag_score", 0.0)), reverse=True)
-        if ranked_all and (filters.get("district") or filters.get("industry") or filters.get("keyword")):
+        if ranked_all:
             return ranked_all[: min(limit, 10)], len(ranked_all)
         return [], 0
     except Exception as exc:
