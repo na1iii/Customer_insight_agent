@@ -15,6 +15,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, text, Index, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
+from utils.alias_helper import alias_helper
 
 # 初始化 Elasticsearch 客户端 (忽略 SSL 自签名证书警告)
 import urllib3
@@ -785,6 +786,11 @@ def fetch_article_rows(limit: int = 500, district: str = None) -> list[dict]:
         for r in ent_rows:
             name = (r.get("企业名称") or "").strip()
             short = (r.get("企业简称") or "").strip()
+            
+            # 如果数据库中的企业简称字段为空，在内存中使用别名查找器动态补齐
+            if not short and name in alias_helper.official_to_alias:
+                short = alias_helper.official_to_alias[name]
+                
             val = {"full": name, "short": short, "ind": r.get("工商行业"), "dist": r.get("客户区局"), "qual": r.get("资质名称")}
             if name:
                 ent_dict[name] = val
