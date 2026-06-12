@@ -324,18 +324,89 @@ ALL_26_INDUSTRIES = [
     }
 ]
 
+
+def md_to_html(text: str) -> str:
+    if not text:
+        return ""
+    import re
+    # Convert headers
+    text = re.sub(r'###\s+(.*?)(?:\n|$)', r'<h3>\1</h3>', text)
+    text = re.sub(r'####\s+(.*?)(?:\n|$)', r'<h4>\1</h4>', text)
+    # Convert bold
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    
+    # Handle lists
+    lines = text.split('\n')
+    new_lines = []
+    in_ul = False
+    in_ol = False
+    
+    for line in lines:
+        ul_match = re.match(r'^\s*[-*]\s+(.*)', line)
+        ol_match = re.match(r'^\s*\d+\.\s+(.*)', line)
+        
+        if ul_match:
+            if in_ol:
+                new_lines.append('</ol>')
+                in_ol = False
+            if not in_ul:
+                new_lines.append('<ul>')
+                in_ul = True
+            new_lines.append(f'<li>{ul_match.group(1)}</li>')
+        elif ol_match:
+            if in_ul:
+                new_lines.append('</ul>')
+                in_ul = False
+            if not in_ol:
+                new_lines.append('<ol>')
+                in_ol = True
+            new_lines.append(f'<li>{ol_match.group(1)}</li>')
+        else:
+            if in_ul:
+                new_lines.append('</ul>')
+                in_ul = False
+            if in_ol:
+                new_lines.append('</ol>')
+                in_ol = False
+            stripped = line.strip()
+            if stripped:
+                new_lines.append(line)
+            else:
+                new_lines.append('')
+                
+    if in_ul:
+        new_lines.append('</ul>')
+    if in_ol:
+        new_lines.append('</ol>')
+        
+    result_lines = []
+    for line in new_lines:
+        if line.strip() in ['<ul>', '</ul>', '<ol>', '</ol>', '<li>', '</li>', '<h3>', '</h3>', '<h4>', '</h4>']:
+            result_lines.append(line)
+        elif line.strip() == '':
+            result_lines.append('<br/>')
+        else:
+            result_lines.append(line + '<br/>')
+            
+    html = '\n'.join(result_lines)
+    html = re.sub(r'(<br/>\s*)+', '<br/>', html)
+    if html.endswith('<br/>'):
+        html = html[:-5]
+    return html
+
 def generate_html_report(dest_path: str, title: str, summary: str, chapters: list, policies: list = None, weiban_policies: list = None, news: list = None) -> str:
     """
     生成高颜值的 A4 排版 HTML 报告，集成打印功能，展示真实政策与新闻，避免中文字体乱码问题。
     """
+    from datetime import datetime
     chapters_html = ""
     for ch in chapters:
         ch_title = ch.get("title", "")
-        ch_content = ch.get("content", "").replace("\n", "<br/>")
+        ch_content = md_to_html(ch.get("content", ""))
         chapters_html += f"""
         <div class="chapter">
             <h2>{ch_title}</h2>
-            <p>{ch_content}</p>
+            <div class="chapter-content">{ch_content}</div>
         </div>
         """
 
@@ -407,13 +478,15 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
 <head>
     <meta charset="UTF-8">
     <title>{title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         :root {{
-            --primary: #1e3a8a;
-            --primary-dark: #0f172a;
-            --secondary: #2563eb;
+            --primary: #0f172a;
+            --primary-dark: #020617;
+            --secondary: #1e3a8a;
+            --accent: #2563eb;
+            --accent-gold: #eab308;
             --text-main: #334155;
             --text-dark: #0f172a;
             --bg-light: #f8fafc;
@@ -423,80 +496,191 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
             font-family: 'Outfit', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: var(--text-main);
             background-color: var(--bg-light);
-            line-height: 1.6;
+            line-height: 1.8;
             margin: 0;
             padding: 40px 20px;
         }}
         .report-card {{
-            max-width: 800px;
+            max-width: 840px;
             margin: 0 auto;
             background: #ffffff;
             border: 1px solid var(--border-color);
             border-radius: 16px;
             padding: 50px 60px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
         }}
-        .header {{
+        
+        /* 封面样式 */
+        .cover-page {{
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #ffffff;
+            padding: 60px 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
             text-align: center;
-            border-bottom: 2px solid var(--border-color);
-            padding-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+        }}
+        .cover-page::before {{
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 60%);
+            pointer-events: none;
+        }}
+        .cover-tag {{
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--accent-gold);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+        }}
+        .cover-title {{
+            font-size: 30px;
+            font-weight: 700;
+            line-height: 1.4;
+            margin: 0 0 20px 0;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }}
+        .cover-subtitle {{
+            font-size: 15px;
+            color: #94a3b8;
             margin-bottom: 30px;
         }}
-        h1 {{
-            font-size: 28px;
-            color: var(--primary-dark);
-            margin: 0 0 15px 0;
-            font-weight: 700;
+        .cover-meta {{
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            font-size: 13px;
+            color: #cbd5e1;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            padding-top: 20px;
+            margin-top: 20px;
         }}
-        .metadata {{
-            font-size: 14px;
-            color: #64748b;
-        }}
+        
+        /* 前言导读样式 */
         .summary-box {{
             background-color: #f8fafc;
-            border-left: 4px solid var(--secondary);
-            padding: 20px;
+            border-left: 4px solid var(--accent);
+            padding: 24px;
             border-radius: 8px;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
             font-size: 15px;
             color: var(--text-dark);
             border: 1px solid var(--border-color);
             border-left-width: 4px;
         }}
         .summary-box h3 {{
-            margin: 0 0 10px 0;
-            color: var(--primary);
+            margin: 0 0 12px 0;
+            color: var(--secondary);
             font-size: 16px;
+            font-weight: 700;
         }}
+        
+        /* 分页线样式 */
+        .page-break {{
+            border-bottom: 2px dashed var(--border-color);
+            margin: 40px 0;
+            position: relative;
+        }}
+        .page-break::after {{
+            content: "分页标记 (仅在导出PDF时自动截断分页)";
+            position: absolute;
+            top: -11px;
+            right: 20px;
+            background: #ffffff;
+            padding: 0 10px;
+            font-size: 11px;
+            color: #94a3b8;
+        }}
+        
+        /* 章节正文样式 */
         .chapter {{
-            margin-bottom: 35px;
+            margin-bottom: 40px;
         }}
         .chapter h2 {{
             font-size: 18px;
-            color: var(--primary);
-            border-bottom: 1px solid var(--border-color);
+            color: var(--secondary);
+            border-bottom: 2px solid #e2e8f0;
             padding-bottom: 8px;
             margin-top: 0;
-            margin-bottom: 15px;
+            margin-bottom: 18px;
+            font-weight: 700;
         }}
-        .chapter p {{
-            margin: 0;
+        .chapter-content {{
             font-size: 14.5px;
             text-align: justify;
             color: var(--text-main);
             line-height: 1.8;
         }}
         
+        /* Markdown 解析排版样式 */
+        .chapter-content h3 {{
+            font-size: 16px;
+            color: var(--text-dark);
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }}
+        .chapter-content h4 {{
+            font-size: 15px;
+            color: var(--text-dark);
+            margin-top: 15px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }}
+        .chapter-content strong {{
+            color: var(--text-dark);
+        }}
+        .chapter-content ul {{
+            list-style: none;
+            padding-left: 20px;
+            margin: 12px 0;
+        }}
+        .chapter-content ul li {{
+            position: relative;
+            margin-bottom: 8px;
+            padding-left: 4px;
+        }}
+        .chapter-content ul li::before {{
+            content: "◆";
+            position: absolute;
+            left: -16px;
+            color: var(--accent);
+            font-size: 10px;
+            top: 0px;
+        }}
+        .chapter-content ol {{
+            padding-left: 20px;
+            margin: 12px 0;
+        }}
+        .chapter-content ol li {{
+            margin-bottom: 8px;
+        }}
+        
         /* 实时产业情报样式 */
         .intelligence-section {{
-            margin-top: 40px;
+            margin-top: 50px;
             border-top: 2px dashed var(--border-color);
-            padding-top: 30px;
+            padding-top: 35px;
+            page-break-inside: avoid;
         }}
         .intelligence-section h2 {{
             font-size: 18px;
-            color: var(--primary);
-            margin-bottom: 20px;
+            color: var(--secondary);
+            margin-bottom: 24px;
+            font-weight: 700;
         }}
         .intelligence-grid {{
             display: grid;
@@ -518,20 +702,23 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 20px;
+            page-break-inside: avoid;
         }}
         .intelligence-card h3 {{
             margin-top: 0;
             margin-bottom: 15px;
             font-size: 15px;
             color: var(--text-dark);
-            border-left: 3px solid var(--secondary);
+            border-left: 3px solid var(--accent);
             padding-left: 8px;
+            font-weight: 700;
         }}
         .intel-item {{
             font-size: 13px;
             margin-bottom: 12px;
             border-bottom: 1px solid #f1f5f9;
             padding-bottom: 10px;
+            page-break-inside: avoid;
         }}
         .intel-item:last-child {{
             border-bottom: none;
@@ -553,14 +740,14 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
             margin-top: 4px;
         }}
         .intel-link {{
-            color: var(--secondary);
+            color: var(--accent);
             text-decoration: none;
             font-weight: 600;
         }}
         .intel-link:hover {{
             text-decoration: underline;
         }}
-
+        
         .footer {{
             margin-top: 50px;
             border-top: 1px solid var(--border-color);
@@ -570,15 +757,14 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
             color: #94a3b8;
         }}
         
-        /* Floating print button styling */
         .actions-bar {{
-            max-width: 800px;
+            max-width: 840px;
             margin: 0 auto 20px auto;
             display: flex;
             justify-content: flex-end;
         }}
         .btn {{
-            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+            background: linear-gradient(135deg, var(--accent) 0%, var(--secondary) 100%);
             color: white;
             border: none;
             padding: 10px 20px;
@@ -597,7 +783,6 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
             box-shadow: 0 6px 12px rgba(37, 99, 235, 0.3);
         }}
         
-        /* Print rules */
         @media print {{
             body {{
                 background-color: white;
@@ -617,10 +802,19 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
                 size: A4;
                 margin: 20mm;
             }}
-            .chapter {{
-                page-break-inside: avoid;
+            .page-break {{
+                border: none;
+                margin: 0;
+                height: 0;
+                page-break-after: always;
             }}
-            .intelligence-section {{
+            .page-break::after {{
+                display: none;
+            }}
+            .chapter h2, .intelligence-section h2, .intelligence-card h3 {{
+                page-break-after: avoid;
+            }}
+            .chapter {{
                 page-break-inside: avoid;
             }}
         }}
@@ -635,15 +829,24 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
     </div>
     
     <div class="report-card">
-        <div class="header">
-            <h1>{title}</h1>
-            <div class="metadata">AI智能体客户洞察项目组 | 行业深度研究报告</div>
+        <div class="first-page">
+            <div class="cover-page">
+                <div class="cover-tag">INDUSTRY DEPTH RESEARCH REPORT</div>
+                <h1 class="cover-title">{title}</h1>
+                <div class="cover-subtitle">AI智能体客户洞察项目组 | 行业深度研究报告</div>
+                <div class="cover-meta">
+                    <span>📅 生成时间: {datetime.now().strftime('%Y-%m-%d')}</span>
+                    <span>🛡️ 机密级别: 内部参考</span>
+                </div>
+            </div>
+            
+            <div class="summary-box">
+                <h3>前言导读</h3>
+                <p>{summary}</p>
+            </div>
         </div>
         
-        <div class="summary-box">
-            <h3>前言导读</h3>
-            <p>{summary}</p>
-        </div>
+        <div class="page-break"></div>
         
         {chapters_html}
 
@@ -667,7 +870,7 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
         </div>
         
         <div class="footer">
-            © 2026 AI智能体客户洞察项目组 | 本报告由大模型辅助生成，仅供决策参考
+            © {datetime.now().year} AI智能体客户洞察项目组 | 本报告由大模型辅助生成，仅供决策参考
         </div>
     </div>
     <script>
@@ -689,6 +892,7 @@ def generate_html_report(dest_path: str, title: str, summary: str, chapters: lis
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write(html_content)
     return dest_path
+
 
 def handle(keyword: str, user_id: int = None) -> dict:
     """
@@ -953,7 +1157,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                 keyword_clean = matched_key.replace("行业", "")
                 prompt = (
                     f"你是一个资深行业分析师。用户请求一份关于《{matched_key}》的深度分析报告。\n"
-                    f"请为你设计并撰写一份结构完整、逻辑严密、措辞专业且高度相关的行业报告。每个章节字数在 350-400 字左右。\n"
+                    f"请为你设计并撰写一份结构完整、逻辑严密、措辞专业且高度相关的行业报告。每个章节字数在 350-400 字左右，正文支持标准的 Markdown 列表与加粗排版。\n"
                     f"我们在业务数据库中检索到了以下相关的最新行业微信舆情、最新行业政策与上海新闻动态，请灵活自然地融合这些数据与事实：\n\n"
                     f"【最新检索到的行业微信舆情 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{articles_context}\n\n"
@@ -966,14 +1170,23 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"要求：返回一个 JSON 对象，必须且只能包含以下三个字段：\n"
                     f"1. 'title': 该报告的专业主标题 (例如: '2026年中国{keyword_clean}行业前沿趋势与商业洞察报告')\n"
                     f"2. 'summary': 该报告的前言导读 (字数在 150-200 字左右)\n"
-                    f"3. 'chapters': 报告的章节列表 (3个章节，每个章节包含 'title' 章节标题 和 'content' 章节正文，内容融合上面的数据库情报，不能包含占位符)\n\n"
+                    f"3. 'chapters': 报告 of 章节列表 (必须刚好是 5个章节，每个章节包含 'title' 章节标题 和 'content' 章节正文，内容融合上面的数据库情报，不能包含占位符。)\n\n"
+                    f"5个章节的标题和主题必须严格定义为：\n"
+                    f"  - 章节一：'一、 什么是{keyword_clean}（产业简介）' (对产业进行宏观介绍，阐述产业定义与背景)\n"
+                    f"  - 章节二：'二、 {keyword_clean}近期政策' (必须融合检索到的国家及地方/上海政策规划，阐述政策红利)\n"
+                    f"  - 章节三：'三、 {keyword_clean}的市场空间（运营商合作机会）' (阐述产业市场空间以及运营商可以参与的方向，例如智算中心、云网融合、安全专网等)\n"
+                    f"  - 章节四：'四、 三大运营商成功实践案例' (必须具体阐述中国电信、中国移动、中国联通三大运营商在该行业的签约、合作与具体落地项目实践)\n"
+                    f"  - 章节五：'五、 {keyword_clean}上海代表企业介绍' (必须整理上海本土的代表性企业、核心业务及方向)\n\n"
                     f"格式示例：\n"
                     f"{{\n"
-                    f"  \"title\": \"2026年中国...报告\",\n"
-                    f"  \"summary\": \"前言导读...\",\n"
+                    f"  \"title\": \"2026年中国{keyword_clean}行业前沿趋势与商业洞察报告\",\n"
+                    f"  \"summary\": \"前言导读内容...\",\n"
                     f"  \"chapters\": [\n"
-                    f"    {{\"title\": \"一、 ...\", \"content\": \"正文段落一...\"}},\n"
-                    f"    ...\n"
+                    f"    {{\"title\": \"一、 什么是{keyword_clean}（产业简介）\", \"content\": \"正文段落一...\"}},\n"
+                    f"    {{\"title\": \"二、 {keyword_clean}近期政策\", \"content\": \"正文段落二...\"}},\n"
+                    f"    {{\"title\": \"三、 {keyword_clean}的市场空间（运营商合作机会）\", \"content\": \"正文段落三...\"}},\n"
+                    f"    {{\"title\": \"四、 三大运营商成功实践案例\", \"content\": \"正文段落四...\"}},\n"
+                    f"    {{\"title\": \"五、 {keyword_clean}上海代表企业介绍\", \"content\": \"正文段落五...\"}}\n"
                     f"  ]\n"
                     f"}}\n"
                     f"注意：只返回标准的 JSON 数据，不要包含 ```json markdown 块包裹，也不要有任何其他解释性话语。"
@@ -981,7 +1194,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             else:
                 prompt = (
                     f"你是一个资深行业分析师。请针对行业报告《{title}》，根据以下大纲要点以及我们从业务数据库中检索到的最新行业微信舆情、最新行业政策与上海新闻动态，"
-                    f"进行内容深度充实与专业润色，每个章节字数扩写至 350-400 字左右。\n"
+                    f"进行内容深度充实与专业润色，每个章节字数扩写至 350-400 字左右，正文支持标准的 Markdown 列表与加粗排版。\n"
                     f"在扩写过程中，请务必灵活并自然地融合最新公众号舆情、最新政策和新闻动态中的真实数据、发布单位和事实（如引述相关政策、新闻或公众号文章），以极大增强报告的时效性与权威性。\n\n"
                     f"【原报告基本结构】:\n"
                     f"导读摘要: {summary}\n"
@@ -994,12 +1207,15 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"{weiban_context}\n\n"
                     f"【最新检索到的上海新闻 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{news_context}\n\n"
-                    f"要求：返回一个 JSON 对象，包含键 'summary' (对前言导读进行扩充和优化，字数在 150-200 字左右) 和 'chapters' (格式必须与原大纲一致，仅包含 'title' 和 'content' 字段)。例如：\n"
+                    f"要求：返回一个 JSON 对象，包含键 'summary' (对前言导读进行扩充和优化，字数在 150-200 字左右) 和 'chapters' (格式与原大纲一致，必须包含刚好 5 个章节，仅包含 'title' 和 'content' 字段)。例如：\n"
                     f"{{\n"
                     f"  \"summary\": \"结合最新政策与动态扩充后的前言导读...\",\n"
                     f"  \"chapters\": [\n"
-                    f"    {{\"title\": \"一...\", \"content\": \"融合了最新政策与新闻事实的扩写段落一...\"}},\n"
-                    f"    ...\n"
+                    f"    {{\"title\": \"一、 什么是...\", \"content\": \"融合了最新政策与新闻事实的扩写段落一...\"}},\n"
+                    f"    {{\"title\": \"二、 ...\", \"content\": \"扩写段落二...\"}},\n"
+                    f"    {{\"title\": \"三、 ...\", \"content\": \"扩写段落三...\"}},\n"
+                    f"    {{\"title\": \"四、 ...\", \"content\": \"扩写段落四...\"}},\n"
+                    f"    {{\"title\": \"五、 ...\", \"content\": \"扩写段落五...\"}}\n"
                     f"  ]\n"
                     f"}}\n"
                     f"注意：只返回标准的 JSON 数据，不要包含 ```json markdown 块包裹，也不要有任何其他解释性话语。"
@@ -1013,7 +1229,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.4,
-                timeout=20.0
+                timeout=60.0
             )
             
             content = response.choices[0].message.content

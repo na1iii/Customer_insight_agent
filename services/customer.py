@@ -167,7 +167,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
         clue_res = db.query_business_db(
             "SELECT `企业名称` AS EntName, `省份` AS Province, `城市` AS City, "
             "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
-            "`资质名称` AS Awards_list, `客户经理名称` AS Manager "
+            "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
+            "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
             "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym OR `企业名称` LIKE :keyword LIMIT 1",
             {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
         )
@@ -247,6 +248,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
         growth = db_clue_info.get("Growth_rate", "")
         awards = db_clue_info.get("Awards_list", "")
         manager = db_clue_info.get("Manager", "")
+        establish_date = db_clue_info.get("Establish_date", "")
+        industry = db_clue_info.get("Industry", "")
         db_context_pieces.append(
             f"【企业基础资质与财务属性】:\n"
             f"企业名称: {ent}\n"
@@ -254,7 +257,9 @@ def handle(keyword: str, user_id: int = None) -> dict:
             f"营收规模: {scale}\n"
             f"营业收入增长率: {growth}\n"
             f"所获榜单资质: {awards}\n"
-            f"对接客户经理: {manager}"
+            f"对接客户经理: {manager}\n"
+            f"成立日期: {establish_date}\n"
+            f"所属行业: {industry}"
         )
     db_context_str = "\n\n".join(db_context_pieces)
 
@@ -343,15 +348,19 @@ def handle(keyword: str, user_id: int = None) -> dict:
         
         prompt = (
             f"请根据以下获取的检索上下文数据，针对 “{keyword}” 这一特定企业主体，精细提炼并编写一份结构完整、措辞专业、排版精美的企业/客户画像分析报告（Markdown 格式）。\n"
-            f"请特别分析 “{keyword}” 目前的【核心痛点/挑战】以及针对性的【商业合作契机与建议】（结合痛点给出解决方案思路）。如果上下文包含其他无关企业的资料，请予以忽略，仅聚焦分析 “{keyword}” 本身。\n\n"
+            f"如果上下文包含其他无关企业的资料，请予以忽略，仅聚焦分析 “{keyword}” 本身。\n\n"
             f"【检索上下文信息 ({source_type})】:\n"
             f"{context}\n\n"
+            f"报告必须严格按照以下结构输出，且不得包含任何多余的开场白、问候语或首尾总结词：\n"
+            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、法定代表人、企业规模、成立日期、行业、注册资本、核心资质、主营范围（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性（如法定代表人、注册资本等），请结合你的知识库补充或显示“本次检索未提供”。\n"
+            f"2. **二、近期舆情动态**：按时间倒序展现近期该企业的舆情线索与新闻（如果有多条，必须且最多只显示最新的前五条）。每一条动态需包含：发布日期、主题/标题、数据源、内容摘要。\n"
+            f"3. **三、与上海电信参与合作的内容**：请深度挖掘作为上海电信（运营商与数字化使能者），在面对该企业时可以与其参与和开展的合作内容（结合其行业属性、痛点和近期动态，从算力网络、5G-A、云网融合、工业互联网或安全交付等方面给出针对性的合作契机与方案）。\n"
+            f"4. **四、总结**：针对上述企业概况、舆情及合作内容做一小段精炼的简要总结。\n\n"
             f"排版规范：\n"
-            f"1. 报告第一部分 “一、企业概况”（或企业基本属性部分）中的各项关键指标（如：企业名称/全称、行政归属、核心资质、主营领域、营收规模、对接客户经理等），必须且只能以标准的 Markdown 表格形式展示（表格表头为：| 维度 | 内容 |），以便进行结构化呈现。\n"
-            f"2. 多使用加粗、引用块、列表符号，让段落清晰易读。\n"
-            f"3. 请在报告尾部单独附带一行来源说明（必须换行并用斜体展示），格式为：\n"
+            f"1. 第一部分必须且只能以 Markdown 表格呈现，多使用加粗、引用块、列表符号让后续部分清晰易读。\n"
+            f"2. 请在报告尾部单独附带一行来源说明（必须换行并用斜体展示），格式为：\n"
             f"   *数据来源：关系型业务数据库（已进行 MySQL 直连 + 高精度内存 BM25 检索与重排）*\n"
-            f"4. 不要添加首尾问候语，直接输出分析报告正文。"
+            f"3. 不要添加首尾问候语，直接输出报告正文。"
         )
         
         response = client.chat.completions.create(
@@ -450,7 +459,8 @@ async def handle_stream(keyword: str, user_id: int = None):
             clue_res = db.query_business_db(
                 "SELECT `企业名称` AS EntName, `省份` AS Province, `城市` AS City, "
                 "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
-                "`资质名称` AS Awards_list, `客户经理名称` AS Manager "
+                "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
+                "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
                 "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym OR `企业名称` LIKE :keyword LIMIT 1",
                 {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
             )
@@ -544,6 +554,8 @@ async def handle_stream(keyword: str, user_id: int = None):
         growth = db_clue_info.get("Growth_rate", "")
         awards = db_clue_info.get("Awards_list", "")
         manager = db_clue_info.get("Manager", "")
+        establish_date = db_clue_info.get("Establish_date", "")
+        industry = db_clue_info.get("Industry", "")
         db_context_pieces.append(
             f"【企业基础资质与财务属性】:\n"
             f"企业名称: {ent}\n"
@@ -551,7 +563,9 @@ async def handle_stream(keyword: str, user_id: int = None):
             f"营收规模: {scale}\n"
             f"营业收入增长率: {growth}\n"
             f"所获榜单资质: {awards}\n"
-            f"对接客户经理: {manager}"
+            f"对接客户经理: {manager}\n"
+            f"成立日期: {establish_date}\n"
+            f"所属行业: {industry}"
         )
     db_context_str = "\n\n".join(db_context_pieces)
 
@@ -645,15 +659,19 @@ async def handle_stream(keyword: str, user_id: int = None):
         
         prompt = (
             f"请根据以下获取的检索上下文数据，针对 “{keyword}” 这一特定企业主体，精细提炼并编写一份结构完整、措辞专业、排版精美的企业/客户画像分析报告（Markdown 格式）。\n"
-            f"请特别分析 “{keyword}” 目前的【核心痛点/挑战】以及针对性的【商业合作契机与建议】（结合痛点给出解决方案思路）。如果上下文包含其他无关企业的资料，请予以忽略，仅聚焦分析 “{keyword}” 本身。\n\n"
+            f"如果上下文包含其他无关企业的资料，请予以忽略，仅聚焦分析 “{keyword}” 本身。\n\n"
             f"【检索上下文信息 ({source_type})】:\n"
             f"{context}\n\n"
+            f"报告必须严格按照以下结构输出，且不得包含任何多余的开场白、问候语或首尾总结词：\n"
+            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、法定代表人、企业规模、成立日期、行业、注册资本、核心资质、主营范围（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性（如法定代表人、注册资本等），请结合你的知识库补充或显示“本次检索未提供”。\n"
+            f"2. **二、近期舆情动态**：按时间倒序展现近期该企业的舆情线索与新闻（如果有多条，必须且最多只显示最新的前五条）。每一条动态需包含：发布日期、主题/标题、数据源、内容摘要。\n"
+            f"3. **三、与上海电信参与合作的内容**：请深度挖掘作为上海电信（运营商与数字化使能者），在面对该企业时可以与其参与和开展的合作内容（结合其行业属性、痛点和近期动态，从算力网络、5G-A、云网融合、工业互联网或安全交付等方面给出针对性的合作契机与方案）。\n"
+            f"4. **四、总结**：针对上述企业概况、舆情及合作内容做一小段精炼的简要总结。\n\n"
             f"排版规范：\n"
-            f"1. 报告第一部分 “一、企业概况”（或企业基本属性部分）中的各项关键指标（如：企业名称/全称、行政归属、核心资质、主营领域、营收规模、对接客户经理等），必须且只能以标准的 Markdown 表格形式展示（表格表头为：| 维度 | 内容 |），以便进行结构化呈现。\n"
-            f"2. 多使用加粗、引用块、列表符号，让段落清晰易读。\n"
-            f"3. 请在报告尾部单独附带一行来源说明（必须换行并用斜体展示），格式为：\n"
+            f"1. 第一部分必须且只能以 Markdown 表格呈现，多使用加粗、引用块、列表符号让后续部分清晰易读。\n"
+            f"2. 请在报告尾部单独附带一行来源说明（必须换行并用斜体展示），格式为：\n"
             f"   *数据来源：关系型业务数据库（已进行 MySQL 直连 + 高精度内存 BM25 检索与重排）*\n"
-            f"4. 不要添加首尾问候语，直接输出分析报告正文。"
+            f"3. 不要添加首尾问候语，直接输出报告正文。"
         )
         
         response = await client.chat.completions.create(
