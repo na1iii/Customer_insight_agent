@@ -518,13 +518,9 @@ CATERING_KEYWORDS = [
 ]
 
 SCORING_RULES = [
-    ("投资落地", 25, ["企业投资", "投资落地", "落户", "开工", "投产", "入驻", "设立", "总部落地", "新设", "成立", "扩产", "落地"]),
-    ("重大签约", 20, ["企业签约", "签约", "战略合作", "合作协议", "签约仪式", "对接", "达成合作", "合作"]),
-    ("领导调研", 15, ["领导走访", "领导", "调研", "考察", "视察", "走访", "座谈", "书记", "区长", "主任"]),
-    ("资本融资", 15, ["企业融资", "融资", "IPO", "上市", "基金", "注资", "增资", "战略投资", "完成融资", "挂牌", "科创板", "港交所", "北交所", "收购", "并购", "股权", "领投", "跟投"]),
-    ("技术突破", 15, ["研发突破", "技术突破", "获奖认证", "首发", "首创", "发布", "研发", "攻克", "创新成果", "首款", "首台", "认证", "获奖", "入选", "荣获", "专精特新", "高新技术企业", "小巨人", "瞪羚", "百强"]),
-    ("具化数据", 10, ["明确金额", "规模等数据", "金额", "投资额", "融资额", "面积", "产值", "规模", "数量", "亿元", "万元", "平方米", "亩"]),
-    ("会议论坛", 10, ["行业大会", "会议", "论坛", "峰会", "推介会", "发布会", "展会", "博览会", "对接会", "路演"]),
+    ("投资落地", 15, ["企业投资", "投资落地", "落户", "开工", "投产", "入驻", "设立", "总部落地", "新设", "成立", "扩产", "落地"]),
+    ("技术突破", 5, ["研发突破", "技术突破", "获奖认证", "首发", "首创", "发布", "研发", "攻克", "创新成果", "首款", "首台", "认证", "获奖", "入选", "荣获", "专精特新", "高新技术企业", "小巨人", "瞪羚", "百强"]),
+    ("具化数据", 5, ["明确金额", "规模等数据", "金额", "投资额", "融资额", "面积", "产值", "规模", "数量", "亿元", "万元", "平方米", "亩"]),
 ]
 
 EVENT_PRIORITY = ["投资落地", "重大签约", "领导调研", "资本融资", "技术突破", "具化数据", "会议论坛"]
@@ -584,17 +580,6 @@ def calc_article_opportunity_score(row: dict) -> dict:
         }
 
     text_all = "".join([title, abstract, content, scope, topic, ind1, ind2, ind3, ent_nature, other_nature])
-    is_catering = has_any(text_all, CATERING_KEYWORDS)
-    if is_catering:
-        return {
-            "score": 0,
-            "decision": "否",
-            "level": "不符合采集标准",
-            "type": "",
-            "region": region,
-            "hit": ["餐饮行业"],
-            "reason": "餐饮类相关内容不展示",
-        }
 
     score = 10
     hit = ["企业提及"]
@@ -1198,8 +1183,8 @@ async def _async_batch_llm_judge(rows: list) -> list:
             final_results[idx] = default_res
             continue
             
-        if has_any(text_all, noise_keywords) or has_any(text_all, CATERING_KEYWORDS):
-            default_res["reason"] = "属于非核心关注内容(政务/党建/餐饮等)"
+        if has_any(text_all, noise_keywords):
+            default_res["reason"] = "属于非核心关注内容(政务/党建等)"
             final_results[idx] = default_res
             continue
             
@@ -1294,9 +1279,9 @@ async def _async_batch_llm_judge(rows: list) -> list:
                 
     return final_results
 
-def get_articles(district: str = None) -> dict:
+def get_articles(district: str = None, days_limit: int = 30) -> dict:
     """返回前端商机列表所需的数据结构，兼容 /api/articles。"""
-    raw_articles = fetch_weixin_extract_data(limit=1000, district=district)
+    raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit)
     
     groups_dict = {district: {}} if district else {d_name: {} for d_name in DISTRICTS}
     
@@ -1391,28 +1376,39 @@ def get_articles(district: str = None) -> dict:
 
 _WEIXIN_EXTRACT_CACHE = {}
 
-def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
+def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limit: int = 30) -> list:
     """直接查询 weixin_deepseek_extract_d 表并按规则进行打分和过滤（附带5分钟内存缓存）。"""
     global _WEIXIN_EXTRACT_CACHE
-    cache_key = f"{limit}_{district}"
+    cache_key = f"{limit}_{district}_{days_limit}"
     
     if cache_key in _WEIXIN_EXTRACT_CACHE:
         cached_time, cached_data = _WEIXIN_EXTRACT_CACHE[cache_key]
         if time.time() - cached_time < 300:
             return cached_data
 
-    sql = text("""
+    where_clauses = []
+    params = {"limit": limit}
+    
+    if days_limit is not None and days_limit < 3650:
+        where_clauses.append("a.publish_time >= DATE_SUB(CURDATE(), INTERVAL :days_limit DAY)")
+        params["days_limit"] = days_limit
+        
+    where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+    sql = text(f"""
         SELECT a.id, a.EntName, a.EnterpriseNature, a.Industry1, a.Industry2, a.Industry3, 
                a.article_title, a.Abstract, a.Tag_SS, a.Tag_IPO, a.Tag_RZ, a.Tag_SG, a.OtherNature, 
+               a.CapitalNature, a.NewsTag,
                a.publish_time, a.article_url, a.Scope, a.wechat_name, 
                LEFT(a.article_content, 5000) AS article_content_prefix,
                c.District as ai_district
         FROM weixin_deepseek_extract_d a
         LEFT JOIN ent_region_llm_cache c ON a.EntName = c.EntName
+        {where_sql}
         ORDER BY a.publish_time DESC
         LIMIT :limit
     """)
-    rows = query_business_db(str(sql), {"limit": limit})
+    rows = query_business_db(str(sql), params)
     
     results = []
     for row in rows:
@@ -1429,10 +1425,6 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
             continue
         if has_any(ent_name, ["大学", "研究院", "学院"]):
             continue
-        if has_any(ind1 + ind2 + ind3, ["餐饮", "服务"]):
-            continue
-        if has_any(title + abstract, CATERING_KEYWORDS):
-            continue
             
         # 优先使用 AI 划分的行政区，如果 AI 还没跑完，则降级使用正则匹配
         ai_district = row.get("ai_district")
@@ -1447,21 +1439,46 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
         # 动态打分
         score = 10
         hit = []
+        tags_original = [] # 收集原始标签
         
-        # 标签加分
         tag_ss = (row.get("Tag_SS") or "").strip()
         tag_ipo = (row.get("Tag_IPO") or "").strip()
         tag_rz = (row.get("Tag_RZ") or "").strip()
         tag_sg = (row.get("Tag_SG") or "").strip()
+        capital_nature = (row.get("CapitalNature") or "").strip()
+        news_tag = (row.get("NewsTag") or "").strip()
         
-        if tag_sg:
+        # 记录原始标签 (保留原有逻辑，只要存在就放进原始标签列表)
+        if tag_ss == "是": tags_original.append("上市")
+        if tag_ipo == "是": tags_original.append("IPO")
+        if tag_rz: tags_original.append(tag_rz)
+        if tag_sg: tags_original.append(tag_sg)
+        if capital_nature: tags_original.append(capital_nature)
+        
+        # NewsTag 打分
+        if "国家级领导人调研" in news_tag or "国家领导人调研" in news_tag:
+            score += 20
+            hit.append("领导调研(国家级)")
+        elif "市级领导人调研" in news_tag:
+            score += 15
+            hit.append("领导调研(市级)")
+        elif "区级领导人调研" in news_tag:
+            score += 10
+            hit.append("领导调研(区级)")
+            
+        if "签约" in news_tag:
+            score += 15
+            hit.append("签约")
+            
+        if "开会" in news_tag:
+            score += 10
+            hit.append("开会")
+            
+        # 资本融资标签 (不可叠加)
+        if tag_ss == "是" or tag_ipo == "是" or tag_rz or tag_sg or capital_nature:
             score += 15
             hit.append("资本融资")
-        if tag_ss == "是" or tag_ipo == "是" or tag_rz:
-            if "资本融资" not in hit:
-                score += 15
-                hit.append("资本融资")
-                
+            
         # 文本匹配加分
         text_all = title + " " + abstract
         for rule_name, points, keywords in SCORING_RULES:
@@ -1473,9 +1490,9 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
         # 性质加分
         other_nature = (row.get("OtherNature") or "").strip()
         if other_nature and not has_any(other_nature, ["非企", "无"]):
-            score += 10
-            if "企业资质" not in hit:
-                hit.append("企业资质")
+            score += 5
+            if "其他企业资质" not in hit:
+                hit.append("其他企业资质")
 
         score = min(score, 100)
         score_label = "HOT" if score >= 85 else "关注"
@@ -1484,7 +1501,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
             "ent_name": ent_name,
             "title": title,
             "abstract": abstract,
-            "content": "",
+            "content": row.get("article_content_prefix", ""),
             "link": row.get("article_url"),
             "release_time_raw": str(row.get("publish_time") or ""),
             "district": region,
@@ -1492,11 +1509,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
             "score": score,
             "score_label": score_label,
             "hit": hit,
-            "tags": list(filter(None, [
-                "上市" if tag_ss == "是" else "",
-                "IPO" if tag_ipo == "是" else "",
-                tag_rz, tag_sg
-            ])),
+            "tags": tags_original,
             "wechat_name": (row.get("wechat_name") or "").strip(),
             "raw_row": row
         })
@@ -1504,7 +1517,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None) -> list:
     _WEIXIN_EXTRACT_CACHE[cache_key] = (time.time(), results)
     return results
 
-def get_articles_summary(district: str = None) -> dict:
+def get_articles_summary(district: str = None, days_limit: int = 30) -> dict:
     """获取商机汇总指标，供 regional.py 生成聊天卡片；district 为空时统计上海市全部区域。"""
     empty_summary = {
         "total": 0,
@@ -1515,7 +1528,7 @@ def get_articles_summary(district: str = None) -> dict:
         "district_counts": [],
     }
     try:
-        raw_articles = fetch_weixin_extract_data(limit=1000, district=district)
+        raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit)
     except Exception as e:
         print(f"【Article Summary Error】获取 {district or '上海市'} 商机汇总失败: {e}")
         return empty_summary
