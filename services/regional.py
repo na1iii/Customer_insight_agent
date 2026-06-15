@@ -97,12 +97,12 @@ def _clean_text(value) -> str:
     return str(value or "").strip()
 
 
-def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit: int = 80) -> list[dict]:
+def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit: int = 80, days_limit: int = 30) -> list[dict]:
     """从 weixin_deepseek_extract_d 加载区域 RAG 文档，保持与明细页一致的数据口径。"""
     documents = []
     try:
         district_param = None if is_city_report else region_name
-        rows = db.fetch_weixin_extract_data(limit=limit, district=district_param)
+        rows = db.fetch_weixin_extract_data(limit=limit, district=district_param, days_limit=days_limit)
         rows.sort(key=lambda x: (x.get("score") or 0, x.get("release_time_raw") or ""), reverse=True)
     except Exception as exc:
         db.log_event(None, "regional", "WARNING", f"区域 RAG 文档加载失败: {exc}")
@@ -211,8 +211,8 @@ def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list
     return f"{base} 最新商机数据进一步显示，{region_name}近期较值得关注的线索包括{titles_str or '多条区域动态'}，涉及{entities or '区域重点企业'}，建议结合商机等级、行业标签和最新动态优先触达。"
 
 
-def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summary: dict, user_id: int = None) -> dict:
-    documents = _fetch_regional_rag_documents(region_name, is_city_report)
+def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summary: dict, user_id: int = None, days_limit: int = 30) -> dict:
+    documents = _fetch_regional_rag_documents(region_name, is_city_report, days_limit=days_limit)
     if not documents:
         return {"source_type": "mysql_structured_summary", "evidence": [], "summary": ""}
 
@@ -238,7 +238,7 @@ def _run_regional_rag(keyword: str, region_name: str, is_city_report: bool, summ
         return {"source_type": "mysql_structured_summary", "evidence": [], "summary": ""}
 
 
-def handle(keyword: str, user_id: int = None) -> dict:
+def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
     """
     根据关键字识别行政区，返回结构化区域商机报告卡片。
     """
@@ -252,14 +252,34 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "content": "请问您需要生成哪个区的区域经济报告？（例如：浦东新区、静安区、黄浦区等，或者上海市）"
         }
 
-    db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片。")
+    import re
+    def extract_days_limit(k: str) -> int:
+        if not k:
+            return 30
+        if re.search(r'(今年|本年度|这一年)', k):
+            return 365
+        if re.search(r'(半年|六个月|6个月)', k):
+            return 180
+        if re.search(r'(三个月|3个月)', k):
+            return 90
+        if re.search(r'(两个月|2个月)', k):
+            return 60
+        if re.search(r'(一周|一星期|7天|七天)', k):
+            return 7
+        if re.search(r'(全部|所有时间|不限时间)', k):
+            return 3650
+        return 30
+
+    days_limit = extract_days_limit(raw_text if raw_text else keyword)
+
+    db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片，时间限制: {days_limit}天。")
 
     # 与 /api/articles 明细页保持同一数据口径：均读取 weixin_deepseek_extract_d 大模型挖掘结果。
     # 上海市报告不传 district，明细页默认按 16 个区折叠展示全部商机。
-    summary = db.get_articles_summary(None if is_city_report else region_name)
-    detail_url = "/ui_1.html" if is_city_report else f"/ui_1.html?district={quote(region_name)}"
+    summary = db.get_articles_summary(None if is_city_report else region_name, days_limit=days_limit)
+    detail_url = f"/ui_1.html?days={days_limit}" if is_city_report else f"/ui_1.html?district={quote(region_name)}&days={days_limit}"
     summary_text = build_summary_text(region_name, summary, is_city_report=is_city_report)
-    rag_result = _run_regional_rag(keyword, region_name, is_city_report, summary, user_id=user_id)
+    rag_result = _run_regional_rag(keyword, region_name, is_city_report, summary, user_id=user_id, days_limit=days_limit)
     if rag_result.get("summary"):
         summary_text = rag_result["summary"]
 

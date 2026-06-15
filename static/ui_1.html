@@ -506,17 +506,18 @@
         <div class="logic-section">
             <div class="section-title">📐 入选逻辑 & 评分维度 <span class="section-badge">满分100分</span></div>
             <div class="rules-grid">
-                <div class="rule-item"><div class="rule-icon">🏗️</div><div class="rule-content"><span class="rule-name">投资落地</span> <span class="rule-score">25</span><div class="rule-desc">企业投资/落户/开工/投产</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🤝</div><div class="rule-content"><span class="rule-name">重大签约</span> <span class="rule-score">20</span><div class="rule-desc">企业签约/战略合作/对接</div></div></div>
-                <div class="rule-item"><div class="rule-icon">👔</div><div class="rule-content"><span class="rule-name">领导调研</span> <span class="rule-score">15</span><div class="rule-desc">领导走访/调研/考察视察</div></div></div>
-                <div class="rule-item"><div class="rule-icon">💰</div><div class="rule-content"><span class="rule-name">资本融资</span> <span class="rule-score">10</span><div class="rule-desc">企业融资/IPO/上市/基金</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🚀</div><div class="rule-content"><span class="rule-name">技术突破</span> <span class="rule-score">10</span><div class="rule-desc">研发突破/获奖认证/首发</div></div></div>
-                <div class="rule-item"><div class="rule-icon">📊</div><div class="rule-content"><span class="rule-name">具化数据</span> <span class="rule-score">10</span><div class="rule-desc">涉及明确金额/规模等数据</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🎤</div><div class="rule-content"><span class="rule-name">会议论坛</span> <span class="rule-score">10</span><div class="rule-desc">行业大会/论坛/推介发布会</div></div></div>
+                <div class="rule-item"><div class="rule-icon">👔</div><div class="rule-content"><span class="rule-name">领导调研</span> <span class="rule-score">20/15/10</span><div class="rule-desc">国家/市/区级领导调研</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🤝</div><div class="rule-content"><span class="rule-name">签约</span> <span class="rule-score">15</span><div class="rule-desc">相关签约动态</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🎤</div><div class="rule-content"><span class="rule-name">开会</span> <span class="rule-score">10</span><div class="rule-desc">相关开会动态</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🏗️</div><div class="rule-content"><span class="rule-name">投资落地</span> <span class="rule-score">15</span><div class="rule-desc">文本命中投资落地词汇</div></div></div>
+                <div class="rule-item"><div class="rule-icon">💰</div><div class="rule-content"><span class="rule-name">资本融资</span> <span class="rule-score">15</span><div class="rule-desc">标签命中上市/IPO/融资/收购等</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🚀</div><div class="rule-content"><span class="rule-name">技术突破</span> <span class="rule-score">5</span><div class="rule-desc">文本命中研发突破等词汇</div></div></div>
+                <div class="rule-item"><div class="rule-icon">📊</div><div class="rule-content"><span class="rule-name">具化数据</span> <span class="rule-score">5</span><div class="rule-desc">文本命中金额规模等数据</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🏆</div><div class="rule-content"><span class="rule-name">企业性质</span> <span class="rule-score">5</span><div class="rule-desc">其他非空企业性质标签</div></div></div>
             </div>
             <div class="filter-note">
                 <span class="filter-icon">🗑️</span>
-                <span><strong>已过滤噪音（非商机）：</strong>无具体企业 ・ 非企主体 ・ 低于采集标准 ・ 现代服务业/民生行业下的餐饮、餐厅、饭店、火锅、烧烤、咖啡、奶茶、茶饮、糖水、烘焙、甜品、小吃、美食等</span>
+                <span><strong>已过滤噪音（非商机）：</strong>无具体企业 ・ 非企主体 ・ 低于采集标准 ・ 属于非核心关注内容(政务/党建等)</span>
             </div>
         </div>
 
@@ -550,8 +551,17 @@
             return district ? district.trim() : '';
         }
 
+        function getDaysParam() {
+            const params = new URLSearchParams(window.location.search);
+            const days = params.get('days');
+            return days ? days.trim() : '30';
+        }
+
         function buildApiUrl(district) {
-            return district ? `/api/articles?district=${encodeURIComponent(district)}` : '/api/articles';
+            const days = getDaysParam();
+            let url = district ? `/api/articles?district=${encodeURIComponent(district)}` : '/api/articles';
+            url += (url.includes('?') ? '&' : '?') + `days=${encodeURIComponent(days)}`;
+            return url;
         }
 
         function updateHeader(data, district) {
@@ -583,9 +593,13 @@
                 `;
             }).join('');
 
-            const tagsHtml = (article.display_tags || [])
+            const hitTagsHtml = (article.hit || [])
+                .map(tag => `<span class="meta-pill" style="background:#fef2f2; color:#ef4444; border-color:#fecaca;">🎯 ${escapeHtml(tag)}</span>`)
+                .join('');
+            const origTagsHtml = (article.display_tags || [])
                 .map(tag => `<span class="meta-pill">🏷️ ${escapeHtml(tag)}</span>`)
                 .join('');
+            const tagsHtml = hitTagsHtml + origTagsHtml;
 
             return `
                 <div class="news-item">

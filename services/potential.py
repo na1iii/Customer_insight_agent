@@ -62,6 +62,7 @@ DISTRICT_ALIASES = {
 }
 
 INDUSTRY_KEYWORDS = [
+    "现代服务业", "数字化转型", "未来产业", "先导产业", "重点支撑产业", "先进制造业",
     "人工智能", "AI", "通信", "信息技术", "软件", "互联网", "数字经济", "大数据", "云计算",
     "算力", "集成电路", "半导体", "生物医药", "医疗", "智能制造", "机器人", "新能源",
     "新材料", "汽车", "金融", "文创", "航运", "低空经济", "物联网", "工业互联网",
@@ -75,7 +76,7 @@ NOISE_WORDS = [
 # SIGNAL_RULES 已废弃
 SIGNAL_RULES = []
 
-DEFAULT_SCORE_MIN = 60
+DEFAULT_SCORE_MIN = 11
 DEFAULT_LIMIT = 20
 
 
@@ -110,8 +111,33 @@ def _parse_percent(value: Any) -> float:
     return float(match.group()) if match else 0.0
 
 
-def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN) -> Dict[str, Any]:
-    text_value = _clean_text(keyword)
+def extract_days_limit(k: str) -> int:
+    import re
+    if re.search(r'(今年|本年)', k):
+        now = datetime.now()
+        return (now - datetime(now.year, 1, 1)).days or 1
+    if re.search(r'(半年|6个月|六个月)', k):
+        return 180
+    if re.search(r'(一个季度|1个季度|三个月|3个月)', k):
+        return 90
+    if re.search(r'(一个月|1个月|30天)', k):
+        return 30
+    if re.search(r'(一周|一星期|7天|七天)', k):
+        return 7
+    if re.search(r'(全部|所有时间|不限时间)', k):
+        return 3650
+    return 30
+
+def extract_limit(k: str) -> Optional[int]:
+    import re
+    # 匹配类似 "前10个", "推荐5家", "20名", "30条" 等表示数量的词
+    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+)\s*(?:个|家|名|条|份)', k)
+    if match:
+        return int(match.group(1))
+    return None
+
+def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, raw_text: str = None) -> Dict[str, Any]:
+    text_value = _clean_text(raw_text if raw_text else keyword)
     district = None
     industry = None
 
@@ -124,6 +150,9 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN) ->
         if ind and ind.lower() in text_value.lower():
             industry = "人工智能" if ind == "AI" else ind
             break
+
+    days_limit = extract_days_limit(text_value)
+    limit = extract_limit(text_value)
 
     cleaned = text_value
     for word in NOISE_WORDS:
@@ -139,6 +168,8 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN) ->
         "industry": industry,
         "keyword": cleaned or None,
         "score_min": score_min,
+        "days_limit": days_limit,
+        "limit": limit,
     }
 
 
@@ -151,9 +182,10 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
     import json
     district = filters.get("district")
     district_param = None if district == "上海市" else district
+    days_limit = filters.get("days_limit", 30)
     
     # We fetch more than limit because we will filter in python
-    raw_data = db.fetch_weixin_extract_data(limit=1000, district=district_param)
+    raw_data = db.fetch_weixin_extract_data(limit=1000, district=district_param, days_limit=days_limit)
     
     keyword = filters.get("keyword") or ""
     industry = filters.get("industry") or ""
@@ -212,6 +244,61 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
         })
         if len(results) >= limit:
             break
+
+    company_names = [r["name"] for r in results if r.get("name")]
+    if company_names:
+        import datetime
+        now = datetime.datetime.now()
+        placeholders = ", ".join([f":name_{i}" for i in range(len(company_names))])
+        params = {f"name_{i}": name for i, name in enumerate(company_names)}
+        
+        sql = f"SELECT `企业名称`, `资质名称`, `榜单名称`, `链接`, `到期时间`, `榜单废弃` FROM ranking_ent_dtl_clue WHERE `企业名称` IN ({placeholders})"
+        try:
+            rankings = db.query_business_db(sql, params)
+            ranking_map = {}
+            for r in rankings:
+                discarded = str(r.get("榜单废弃") or "").strip()
+                if discarded in ["1", "是", "true", "True", "废弃"]:
+                    continue
+                
+                expire_str = str(r.get("到期时间") or "").strip()
+                if expire_str and expire_str not in ["-", "无", "0", "None"]:
+                    try:
+                        expire_str = expire_str.replace("/", "-")
+                        parts = expire_str.split()[0].split("-")
+                        if len(parts) >= 3:
+                            expire_date = datetime.datetime(int(parts[0]), int(parts[1]), int(parts[2]))
+                            if expire_date < now:
+                                continue
+                    except Exception:
+                        pass
+                
+                ent_name = r.get("企业名称")
+                if not ent_name:
+                    continue
+                if ent_name not in ranking_map:
+                    ranking_map[ent_name] = {"qualifications": [], "ranking_names": [], "ranking_links": []}
+                    
+                qual = str(r.get("资质名称") or "").strip()
+                if qual and qual not in ranking_map[ent_name]["qualifications"]:
+                    ranking_map[ent_name]["qualifications"].append(qual)
+                    
+                rank_name = str(r.get("榜单名称") or "").strip()
+                if rank_name and rank_name not in ranking_map[ent_name]["ranking_names"]:
+                    ranking_map[ent_name]["ranking_names"].append(rank_name)
+                    
+                link = str(r.get("链接") or "").strip()
+                if link and link not in ranking_map[ent_name]["ranking_links"]:
+                    ranking_map[ent_name]["ranking_links"].append(link)
+            
+            for row in results:
+                ent_name = row["name"]
+                if ent_name in ranking_map:
+                    row["qualification"] = "，".join(ranking_map[ent_name]["qualifications"])
+                    row["ranking_name"] = "，".join(ranking_map[ent_name]["ranking_names"])
+                    row["ranking_link"] = "，".join(ranking_map[ent_name]["ranking_links"])
+        except Exception as e:
+            db.log_event(None, "potential", "WARNING", f"关联榜单信息失败: {e}")
             
     return results
 
@@ -227,7 +314,7 @@ def score_enterprise(row: Dict[str, Any]) -> Tuple[int, List[str], Dict[str, int
     tags: List[str] = []
 
     regional_score = int(row.get("regional_score") or 0)
-    score_parts["Regional基础分"] = regional_score
+    score_parts["商机基础分"] = regional_score
 
     signals_json = row.get("signals_json")
     if signals_json:
@@ -464,9 +551,8 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
     if not rag_info:
         item["rag_score"] = 0.0
         item["rag_evidence"] = []
-        final_score = int(regional_score * 0.8)
-        item["score"] = final_score
-        item["level"] = "HOT" if final_score >= 60 else "关注"
+        item["score"] = regional_score
+        item["level"] = "HOT" if regional_score >= 60 else "关注"
         return item
 
     score = float(rag_info.get("best_score") or 0.0)
@@ -474,19 +560,15 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
     item["rag_score"] = round(score, 4)
     item["rag_evidence"] = evidence
     
-    rag_scaled = int(score * 100)
-    final_score = int(regional_score * 0.8 + rag_scaled * 0.2)
-    item["score"] = min(100, final_score)
-    item["level"] = "HOT" if item["score"] >= 60 else "关注"
+    item["score"] = regional_score
+    item["level"] = "HOT" if regional_score >= 60 else "关注"
     
-    if final_score > int(regional_score * 0.8):
-        item.setdefault("score_parts", {})["RAG加权分"] = int(rag_scaled * 0.2)
+    if evidence:
         signals = item.setdefault("signals", [])
         if "RAG强相关证据" not in signals:
             signals.append("RAG强相关证据")
-        if evidence:
-            title = evidence[0].get("title") or "相关证据"
-            item["reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
+        title = evidence[0].get("title") or "相关证据"
+        item["reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
     return item
 
 
@@ -497,26 +579,30 @@ def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score
     return {
         "name": _clean_text(row.get("name")),
         "short_name": _clean_text(row.get("short_name")),
+        "customer_name": _clean_text(row.get("customer_name")) or _clean_text(row.get("name")),
         "score": score,
         "level": level,
         "industry": industry,
+        "industry_alt": _clean_text(row.get("industry_alt")),
+        "marketing_industry_l1": _clean_text(row.get("marketing_industry_l1")),
         "region": region or "未标注",
         "signals": tags[:6],
         "reason": build_reason(row, tags),
         "next_action": build_next_action(row, tags),
         "account_manager": "",
-        "qualification": "",
+        "qualification": _clean_text(row.get("qualification")),
         "revenue_2024": "",
         "growth_rate": "",
         "subsidy_amount": "",
         "subsidy_rule": "",
-        "ranking_name": "",
+        "ranking_name": _clean_text(row.get("ranking_name")),
         "ranking_type": "",
-        "ranking_link": "",
+        "ranking_link": _clean_text(row.get("ranking_link")),
         "is_new_hope_customer": "",
         "latest_title": _clean_text(row.get("latest_title")),
         "latest_date": _clean_text(row.get("latest_date")),
         "link": _clean_text(row.get("latest_link")),
+        "latest_content": _clean_text(row.get("latest_content")),
         "score_parts": score_parts,
     }
 
@@ -572,8 +658,8 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, ski
             score, tags, score_parts = score_enterprise(row)
             normalized = _normalize_candidate(row, score, tags, score_parts)
             normalized = _apply_rag_to_candidate(normalized, company_rag.get(name, {}))
-            ranked_all.append(normalized)
             if int(normalized.get("score") or 0) >= score_min:
+                ranked_all.append(normalized)
                 recommendations.append(normalized)
 
         if skip_rag:
@@ -611,23 +697,18 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
         df = pd.DataFrame(items)
         df_excel = df.rename(columns={
             "name": "企业名称",
-            "short_name": "企业简称",
+            "customer_name": "企业标准名称",
             "region": "行政区",
-            "industry": "行业",
+            "industry": "重点行业一",
+            "industry_alt": "重点行业二",
+            "marketing_industry_l1": "重点行业三",
             "score": "推荐评分",
             "level": "推荐等级",
             "signals": "命中信号",
             "reason": "推荐理由",
             "next_action": "下一步动作",
-            "account_manager": "客户经理",
             "qualification": "资质名称",
             "ranking_name": "榜单名称",
-            "ranking_type": "榜单类型",
-            "revenue_2024": "2024年营业收入（万元）",
-            "growth_rate": "营业收入增长率",
-            "subsidy_amount": "补贴金额万元",
-            "subsidy_rule": "补贴金额规则",
-            "is_new_hope_customer": "是否入选新希望客户",
             "latest_title": "最新动态标题",
             "latest_date": "最新动态日期",
             "link": "新闻原文链接",
@@ -636,10 +717,9 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
         if "命中信号" in df_excel.columns:
             df_excel["命中信号"] = df_excel["命中信号"].apply(lambda value: "、".join(value) if isinstance(value, list) else value)
         keep_columns = [
-            "企业名称", "企业简称", "行政区", "行业", "推荐评分", "推荐等级", "命中信号", "推荐理由",
-            "下一步动作", "客户经理", "资质名称", "榜单名称", "榜单类型", "2024年营业收入（万元）",
-            "营业收入增长率", "补贴金额万元", "补贴金额规则", "是否入选新希望客户",
-            "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
+            "企业名称", "企业标准名称", "行政区", "重点行业一", "重点行业二", "重点行业三",
+            "推荐评分", "推荐等级", "命中信号", "推荐理由", "下一步动作",
+            "资质名称", "榜单名称", "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
         ]
         df_excel = df_excel[[column for column in keep_columns if column in df_excel.columns]]
     else:
@@ -661,16 +741,17 @@ def _build_export_url(filters: Dict[str, Any]) -> str:
     return "/api/potential/export?" + urlencode(params)
 
 
-def handle(keyword: str, user_id: int = None) -> dict:
-    if not keyword:
+def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
+    if not keyword and not raw_text:
         return {
             "type": "text",
             "content": "请问您想挖掘哪个行政区或哪个行业的高潜客户？（例如：浦东新区、人工智能行业等）"
         }
-    filters = parse_filters(keyword)
+    filters = parse_filters(keyword, raw_text=raw_text)
     db.log_event(user_id, "potential", "INFO", f"开始检索高潜客户线索。过滤条件: {filters}")
 
-    items, total_count = get_recommendations(filters)
+    limit = filters.get("limit") or DEFAULT_LIMIT
+    items, total_count = get_recommendations(filters, limit=limit)
     
     if items:
         try:
@@ -768,15 +849,7 @@ def export_excel(
     return excel_path
 
 
-async def _async_generate_reason(item: dict) -> dict:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
-    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
-    if not api_key or "your_api_key" in api_key:
-        return item
-        
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-    
+async def _async_generate_reason_with_client(client: AsyncOpenAI, model_name: str, item: dict) -> dict:
     rag_evidences = [e.get("title") for e in item.get("rag_evidence", [])]
     
     prompt = f"""
@@ -787,12 +860,13 @@ async def _async_generate_reason(item: dict) -> dict:
 收入增速：{item.get('growth_rate', '未知')}
 命中信号标签：{','.join(item.get('signals', []))}
 最新动态标题：{item.get('latest_title', '无')}
+最新动态内容（原文摘录）：{item.get('latest_content', '无')}
 RAG补充证据：{rag_evidences}
 
 【撰写要求】：
-1. 根据上述信息，分析该企业的近期动态或资质意味着怎样的业务扩张、数字化转型等潜在需求。
-2. 推荐理由（reason）：一到两句精炼的分析，说明为什么值得优先跟进。必须彻底摆脱模板化套话，要深度结合企业的具体行业和具体动态来写，例如“该企业近期完成了A轮融资，且具备专精特新资质，表明其研发投入将加大，可能有云算力扩容需求。”
-3. 下一步动作（next_action）：结合行业给出下一步业务拓展建议（例如专线、云资源、5G专网、ICT集成或政策申报），一句话概括。如果新闻提到新办公楼，建议写“跟进园区专线建设”等。
+1. 深入研读新闻“原文摘录”，提炼出能真正体现其扩张、转型、建厂、出海、技术升级等潜在 IT/通信/算力 需求的核心情报。
+2. 推荐理由（reason）：一到两句大白话分析。**必须彻底摆脱模板化套话（严禁使用“涉及大规模数字化展示和运营”、“必然需要高可靠网络、云资源和智能系统集成，潜在ICT需求巨大”这类万金油句式）**。请直接指出新闻里发生了什么具体的业务事件，这会导致什么样的具体采购需求。
+3. 下一步动作（next_action）：给出一句话极其具体的销售跟进建议。**严禁使用“提供整体ICT集成服务”、“跟进云资源方案”这类空泛套话**。如果是新建园区，就写建议切入弱电与专线；如果是出海，就推跨境专网；如果是新签AI战略，就推算力租赁等，必须要跟新闻里的动作挂钩。
 4. 严格以 JSON 格式返回，包含 'reason' 和 'next_action' 两个字符串字段，不要有 ```json 标记。
 """
     try:
@@ -806,17 +880,32 @@ RAG补充证据：{rag_evidences}
             temperature=0.3,
             timeout=15.0
         )
-        res = json.loads(response.choices[0].message.content)
-        if "reason" in res and res["reason"]:
-            item["reason"] = res["reason"]
-        if "next_action" in res and res["next_action"]:
-            item["next_action"] = res["next_action"]
+        # 兼容处理大模型返回的空字符或非合法 JSON 避免 Expecting value 报错
+        content = (response.choices[0].message.content or "").strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        if content:
+            res = json.loads(content)
+            if "reason" in res and res["reason"]:
+                item["reason"] = res["reason"]
+            if "next_action" in res and res["next_action"]:
+                item["next_action"] = res["next_action"]
     except Exception as e:
         print(f"Generate reason error for {item.get('name')}: {e}")
     return item
 
 async def _async_generate_all_reasons(items: list) -> list:
-    tasks = [_async_generate_reason(item) for item in items[:10]] # 只润色前10个，避免过载
-    await asyncio.gather(*tasks)
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+    if not api_key or "your_api_key" in api_key:
+        return items
+        
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    try:
+        tasks = [_async_generate_reason_with_client(client, model_name, item) for item in items]
+        await asyncio.gather(*tasks)
+    finally:
+        await client.close()
     return items
 

@@ -211,11 +211,11 @@ async def chat_generator(user_text: str, scene: str, conv_id: str, user_id: int)
             # 1. 异步线程调用对应的同步处理器
             def run_sync_handler():
                 if resolved_scene == "regional":
-                    return regional.handle(keyword, user_id=user_id)
+                    return regional.handle(keyword, user_id=user_id, raw_text=user_text)
                 elif resolved_scene == "industry":
                     return industry.handle(keyword, user_id=user_id)
                 elif resolved_scene == "potential":
-                    return potential.handle(keyword, user_id=user_id)
+                    return potential.handle(keyword, user_id=user_id, raw_text=user_text)
                 else:
                     return customer.handle(keyword, user_id=user_id)
                     
@@ -291,8 +291,8 @@ async def chat_endpoint(request: ChatRequest):
 
 # 7.5. 公众号商机文章及高潜 Excel 导出路由
 @app.get("/api/articles")
-async def get_articles_endpoint(district: Optional[str] = None):
-    return db.get_articles(district=district)
+async def get_articles_endpoint(district: Optional[str] = None, days: int = 30):
+    return db.get_articles(district=district, days_limit=days)
 
 @app.post("/api/articles/rebuild")
 async def rebuild_articles_endpoint(
@@ -326,7 +326,7 @@ async def export_potential_endpoint(
     district: Optional[str] = None,
     industry: Optional[str] = None,
     keyword: Optional[str] = None,
-    score_min: int = 55,
+    score_min: int = 11,
     user_id: Optional[int] = None,
 ):
     try:
