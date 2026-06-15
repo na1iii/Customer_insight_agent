@@ -244,6 +244,61 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
         })
         if len(results) >= limit:
             break
+
+    company_names = [r["name"] for r in results if r.get("name")]
+    if company_names:
+        import datetime
+        now = datetime.datetime.now()
+        placeholders = ", ".join([f":name_{i}" for i in range(len(company_names))])
+        params = {f"name_{i}": name for i, name in enumerate(company_names)}
+        
+        sql = f"SELECT `企业名称`, `资质名称`, `榜单名称`, `链接`, `到期时间`, `榜单废弃` FROM ranking_ent_dtl_clue WHERE `企业名称` IN ({placeholders})"
+        try:
+            rankings = db.query_business_db(sql, params)
+            ranking_map = {}
+            for r in rankings:
+                discarded = str(r.get("榜单废弃") or "").strip()
+                if discarded in ["1", "是", "true", "True", "废弃"]:
+                    continue
+                
+                expire_str = str(r.get("到期时间") or "").strip()
+                if expire_str and expire_str not in ["-", "无", "0", "None"]:
+                    try:
+                        expire_str = expire_str.replace("/", "-")
+                        parts = expire_str.split()[0].split("-")
+                        if len(parts) >= 3:
+                            expire_date = datetime.datetime(int(parts[0]), int(parts[1]), int(parts[2]))
+                            if expire_date < now:
+                                continue
+                    except Exception:
+                        pass
+                
+                ent_name = r.get("企业名称")
+                if not ent_name:
+                    continue
+                if ent_name not in ranking_map:
+                    ranking_map[ent_name] = {"qualifications": [], "ranking_names": [], "ranking_links": []}
+                    
+                qual = str(r.get("资质名称") or "").strip()
+                if qual and qual not in ranking_map[ent_name]["qualifications"]:
+                    ranking_map[ent_name]["qualifications"].append(qual)
+                    
+                rank_name = str(r.get("榜单名称") or "").strip()
+                if rank_name and rank_name not in ranking_map[ent_name]["ranking_names"]:
+                    ranking_map[ent_name]["ranking_names"].append(rank_name)
+                    
+                link = str(r.get("链接") or "").strip()
+                if link and link not in ranking_map[ent_name]["ranking_links"]:
+                    ranking_map[ent_name]["ranking_links"].append(link)
+            
+            for row in results:
+                ent_name = row["name"]
+                if ent_name in ranking_map:
+                    row["qualification"] = "，".join(ranking_map[ent_name]["qualifications"])
+                    row["ranking_name"] = "，".join(ranking_map[ent_name]["ranking_names"])
+                    row["ranking_link"] = "，".join(ranking_map[ent_name]["ranking_links"])
+        except Exception as e:
+            db.log_event(None, "potential", "WARNING", f"关联榜单信息失败: {e}")
             
     return results
 
@@ -524,22 +579,25 @@ def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score
     return {
         "name": _clean_text(row.get("name")),
         "short_name": _clean_text(row.get("short_name")),
+        "customer_name": _clean_text(row.get("customer_name")) or _clean_text(row.get("name")),
         "score": score,
         "level": level,
         "industry": industry,
+        "industry_alt": _clean_text(row.get("industry_alt")),
+        "marketing_industry_l1": _clean_text(row.get("marketing_industry_l1")),
         "region": region or "未标注",
         "signals": tags[:6],
         "reason": build_reason(row, tags),
         "next_action": build_next_action(row, tags),
         "account_manager": "",
-        "qualification": "",
+        "qualification": _clean_text(row.get("qualification")),
         "revenue_2024": "",
         "growth_rate": "",
         "subsidy_amount": "",
         "subsidy_rule": "",
-        "ranking_name": "",
+        "ranking_name": _clean_text(row.get("ranking_name")),
         "ranking_type": "",
-        "ranking_link": "",
+        "ranking_link": _clean_text(row.get("ranking_link")),
         "is_new_hope_customer": "",
         "latest_title": _clean_text(row.get("latest_title")),
         "latest_date": _clean_text(row.get("latest_date")),
@@ -639,23 +697,18 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
         df = pd.DataFrame(items)
         df_excel = df.rename(columns={
             "name": "企业名称",
-            "short_name": "企业简称",
+            "customer_name": "企业标准名称",
             "region": "行政区",
-            "industry": "行业",
+            "industry": "重点行业一",
+            "industry_alt": "重点行业二",
+            "marketing_industry_l1": "重点行业三",
             "score": "推荐评分",
             "level": "推荐等级",
             "signals": "命中信号",
             "reason": "推荐理由",
             "next_action": "下一步动作",
-            "account_manager": "客户经理",
             "qualification": "资质名称",
             "ranking_name": "榜单名称",
-            "ranking_type": "榜单类型",
-            "revenue_2024": "2024年营业收入（万元）",
-            "growth_rate": "营业收入增长率",
-            "subsidy_amount": "补贴金额万元",
-            "subsidy_rule": "补贴金额规则",
-            "is_new_hope_customer": "是否入选新希望客户",
             "latest_title": "最新动态标题",
             "latest_date": "最新动态日期",
             "link": "新闻原文链接",
@@ -664,10 +717,9 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
         if "命中信号" in df_excel.columns:
             df_excel["命中信号"] = df_excel["命中信号"].apply(lambda value: "、".join(value) if isinstance(value, list) else value)
         keep_columns = [
-            "企业名称", "企业简称", "行政区", "行业", "推荐评分", "推荐等级", "命中信号", "推荐理由",
-            "下一步动作", "客户经理", "资质名称", "榜单名称", "榜单类型", "2024年营业收入（万元）",
-            "营业收入增长率", "补贴金额万元", "补贴金额规则", "是否入选新希望客户",
-            "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
+            "企业名称", "企业标准名称", "行政区", "重点行业一", "重点行业二", "重点行业三",
+            "推荐评分", "推荐等级", "命中信号", "推荐理由", "下一步动作",
+            "资质名称", "榜单名称", "最新动态标题", "最新动态日期", "新闻原文链接", "榜单原文链接",
         ]
         df_excel = df_excel[[column for column in keep_columns if column in df_excel.columns]]
     else:
@@ -851,7 +903,7 @@ async def _async_generate_all_reasons(items: list) -> list:
         
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     try:
-        tasks = [_async_generate_reason_with_client(client, model_name, item) for item in items[:10]] # 只润色前10个，避免过载
+        tasks = [_async_generate_reason_with_client(client, model_name, item) for item in items]
         await asyncio.gather(*tasks)
     finally:
         await client.close()
