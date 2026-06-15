@@ -900,55 +900,103 @@ def handle(keyword: str, user_id: int = None) -> dict:
     """
     k = str(keyword or "").strip()
     
+    # 1. 提取地区与核心产业
+    region_prefix = ""
+    core_industry = k
+    
+    # 常见行政区和城市前缀
     regions_list = [
-        "浦东新区", "黄浦区", "徐汇区", "长宁区", "静安区", "普陀区", "虹口区", "杨浦区",
-        "闵行区", "宝山区", "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区",
-        "浦东", "黄浦", "徐汇", "长宁", "静安", "普陀", "虹口", "杨浦", "闵行", "宝山", "嘉定", "金山", "松江", "青浦", "奉贤", "崇明",
-        "上海", "上海市", "全市", "全区", "区域", "全市行业", "全市所有行业"
+        "上海市", "上海", "浦东新区", "静安区", "徐汇区", "黄浦区", 
+        "长宁区", "普陀区", "虹口区", "杨浦区", "闵行区", "宝山区", 
+        "嘉定区", "金山区", "松江区", "青浦区", "奉贤区", "崇明区",
+        "浦东", "静安", "徐汇", "黄浦", "长宁", "普陀", "虹口", 
+        "杨浦", "闵行", "宝山", "嘉定", "金山", "松江", "青浦", 
+        "奉贤", "崇明"
     ]
-    if k in regions_list:
+    
+    # 检查是否以区域开头，如果是，则提取区域前缀
+    for r in regions_list:
+        if k.startswith(r):
+            region_prefix = r
+            core_industry = k[len(r):].strip()
+            break
+            
+    # 清理行业、行业报告等后缀
+    for suffix in ["行业报告", "报告", "研报", "行业", "业"]:
+        if core_industry.endswith(suffix):
+            core_industry = core_industry[:-len(suffix)].strip()
+            break
+
+    # 如果核心行业是空，或者 keyword 是纯区域词，或者 keyword 是纯泛指词
+    is_pure_region = k in regions_list or k in ["全市", "全区", "区域", "全市行业", "全市所有行业"]
+    
+    if is_pure_region:
         k = "全行业"
         keyword = "全行业"
+        core_industry = "全行业"
         
-    if not k or (k in ("行业", "行业报告", "生成行业报告", "行业研报") or ("行业报告" in k and "全行业" not in k)):
+    title_region = region_prefix if region_prefix else "上海市"
+    if region_prefix in ["上海市", "上海"]:
+        chapter_region = "上海"
+    elif region_prefix:
+        chapter_region = region_prefix
+    else:
+        chapter_region = "上海"
+
+    # 如果核心行业是空，或者 keyword 是纯泛指词，返回提示
+    is_generic = not core_industry or core_industry in ["行业", "生成行业报告", "行业研报"]
+    if is_generic:
         return {
             "type": "text",
             "content": "请问您需要生成哪个行业的深度分析报告？（例如：人工智能、医药、新能源，或回复“全行业”生成汇编报告）"
         }
 
-    # 如果关键词是空，或是泛指的“全行业”、“行业”、“行业报告”、“生成行业报告”等，均判定为全行业汇编报告
-    is_all_industries = (
-        "全行业" in k
-    )
-    
+    is_all_industries = "全行业" in core_industry
     if is_all_industries:
         keyword = "全行业"
-    
-    # 查找匹配的行业数据 (做兜底)
+        core_industry = "全行业"
+
+    # 查找匹配 of 行业数据 (做兜底)
     industry_data = None
     matched_key = None
     
     if not is_all_industries:
-        for k, v in INDUSTRIES.items():
-            if keyword in k or k in keyword:
-                industry_data = v
-                matched_key = k
-                break
+        # 如果有区域前缀，我们强制走动态生成路径以保持区域特色报告，不适用预置全国版报告
+        if not region_prefix:
+            for pre_k, v in INDUSTRIES.items():
+                if core_industry in pre_k or pre_k in core_industry:
+                    industry_data = v
+                    matched_key = pre_k
+                    break
             
     is_dynamic = False
     if is_all_industries:
         matched_key = "全行业"
-        title = "2026年中国全行业前沿趋势与商业洞察汇编报告"
-        summary = "本报告对中国26个战略先导与支柱产业进行全面梳理，结合当前宏观政策与实时产业新闻动态，深度呈现各行业的发展现状与未来商业契机。"
+        title = "2026年上海市全行业前沿趋势与商业洞察汇编报告"
+        summary = "本报告对上海市26个战略先导与支柱产业进行全面梳理，结合当前宏观政策与实时产业新闻动态，深度呈现各行业的发展现状与未来商业契机。"
         chapters = ALL_26_INDUSTRIES
     elif not industry_data:
         is_dynamic = True
         matched_key = keyword
         # 若是未录入的行业，设定默认值（以通信行业作备用大纲，大模型未启动或异常时会退化使用）
         backup_data = INDUSTRIES["通信行业"]
-        title = backup_data["title"]
-        summary = backup_data["summary"]
-        chapters = backup_data["chapters"]
+        title = f"2026年{title_region}{core_industry}行业深度趋势与商业洞察报告"
+        summary = f"在数字化转型和人工智能爆发的背景下，{title_region}{core_industry}行业正在经历着深刻变革..."
+        
+        backup_chapters = []
+        for idx, ch in enumerate(backup_data["chapters"]):
+            ch_title = ch["title"]
+            ch_content = ch["content"]
+            if idx == 0:
+                ch_title = f"一、 什么是{core_industry}（产业简介）"
+            elif idx == 1:
+                ch_title = f"二、 {core_industry}近期政策"
+            elif idx == 2:
+                ch_title = f"三、 {core_industry}的市场空间（运营商合作机会）"
+            elif idx == 4:
+                ch_title = f"五、 {core_industry}{chapter_region}代表企业介绍"
+            backup_chapters.append({"title": ch_title, "content": ch_content})
+        chapters = backup_chapters
     else:
         title = industry_data["title"]
         summary = industry_data["summary"]
@@ -1012,7 +1060,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
         except Exception as e:
             db.log_event(user_id, "industry", "ERROR", f"全行业新闻查询异常: {e}")
     else:
-        keyword_clean = matched_key.replace("行业", "")
+        keyword_clean = core_industry
         params = {"kw": f"%{keyword_clean}%"}
         
         try:
@@ -1154,7 +1202,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"注意：只返回标准的 JSON 数据，不要包含 ```json markdown 块包裹，也不要有任何其他解释性话语。"
                 )
             elif is_dynamic:
-                keyword_clean = matched_key.replace("行业", "")
+                keyword_clean = core_industry
                 prompt = (
                     f"你是一个资深行业分析师。用户请求一份关于《{matched_key}》的深度分析报告。\n"
                     f"请为你设计并撰写一份结构完整、逻辑严密、措辞专业且高度相关的行业报告。每个章节字数在 350-400 字左右，正文支持标准的 Markdown 列表与加粗排版。\n"
@@ -1168,25 +1216,25 @@ def handle(keyword: str, user_id: int = None) -> dict:
                     f"【最新检索到的上海新闻 (来自 weixin_deepseek_extract_d)】:\n"
                     f"{news_context}\n\n"
                     f"要求：返回一个 JSON 对象，必须且只能包含以下三个字段：\n"
-                    f"1. 'title': 该报告的专业主标题 (例如: '2026年中国{keyword_clean}行业前沿趋势与商业洞察报告')\n"
+                    f"1. 'title': 该报告的专业主标题 (例如: '2026年{title_region}{core_industry}行业前沿趋势与商业洞察报告')\n"
                     f"2. 'summary': 该报告的前言导读 (字数在 150-200 字左右)\n"
                     f"3. 'chapters': 报告 of 章节列表 (必须刚好是 5个章节，每个章节包含 'title' 章节标题 和 'content' 章节正文，内容融合上面的数据库情报，不能包含占位符。)\n\n"
                     f"5个章节的标题和主题必须严格定义为：\n"
-                    f"  - 章节一：'一、 什么是{keyword_clean}（产业简介）' (对产业进行宏观介绍，阐述产业定义与背景)\n"
-                    f"  - 章节二：'二、 {keyword_clean}近期政策' (必须融合检索到的国家及地方/上海政策规划，阐述政策红利)\n"
-                    f"  - 章节三：'三、 {keyword_clean}的市场空间（运营商合作机会）' (阐述产业市场空间以及运营商可以参与的方向，例如智算中心、云网融合、安全专网等)\n"
+                    f"  - 章节一：'一、 什么是{core_industry}（产业简介）' (对产业进行宏观介绍，阐述产业定义与背景)\n"
+                    f"  - 章节二：'二、 {core_industry}近期政策' (必须融合检索到的国家及地方/上海政策规划，阐述政策红利)\n"
+                    f"  - 章节三：'三、 {core_industry}的市场空间（运营商合作机会）' (阐述产业市场空间以及运营商可以参与的方向，例如智算中心、云网融合、安全专网等)\n"
                     f"  - 章节四：'四、 三大运营商成功实践案例' (必须具体阐述中国电信、中国移动、中国联通三大运营商在该行业的签约、合作与具体落地项目实践)\n"
-                    f"  - 章节五：'五、 {keyword_clean}上海代表企业介绍' (必须整理上海本土的代表性企业、核心业务及方向)\n\n"
+                    f"  - 章节五：'五、 {core_industry}{chapter_region}代表企业介绍' (必须整理{chapter_region}本土的代表性企业、核心业务及方向)\n\n"
                     f"格式示例：\n"
                     f"{{\n"
-                    f"  \"title\": \"2026年中国{keyword_clean}行业前沿趋势与商业洞察报告\",\n"
+                    f"  \"title\": \"2026年{title_region}{core_industry}行业前沿趋势与商业洞察报告\",\n"
                     f"  \"summary\": \"前言导读内容...\",\n"
                     f"  \"chapters\": [\n"
-                    f"    {{\"title\": \"一、 什么是{keyword_clean}（产业简介）\", \"content\": \"正文段落一...\"}},\n"
-                    f"    {{\"title\": \"二、 {keyword_clean}近期政策\", \"content\": \"正文段落二...\"}},\n"
-                    f"    {{\"title\": \"三、 {keyword_clean}的市场空间（运营商合作机会）\", \"content\": \"正文段落三...\"}},\n"
+                    f"    {{\"title\": \"一、 什么是{core_industry}（产业简介）\", \"content\": \"正文段落一...\"}},\n"
+                    f"    {{\"title\": \"二、 {core_industry}近期政策\", \"content\": \"正文段落二...\"}},\n"
+                    f"    {{\"title\": \"三、 {core_industry}的市场空间（运营商合作机会）\", \"content\": \"正文段落三...\"}},\n"
                     f"    {{\"title\": \"四、 三大运营商成功实践案例\", \"content\": \"正文段落四...\"}},\n"
-                    f"    {{\"title\": \"五、 {keyword_clean}上海代表企业介绍\", \"content\": \"正文段落五...\"}}\n"
+                    f"    {{\"title\": \"五、 {core_industry}{chapter_region}代表企业介绍\", \"content\": \"正文段落五...\"}}\n"
                     f"  ]\n"
                     f"}}\n"
                     f"注意：只返回标准的 JSON 数据，不要包含 ```json markdown 块包裹，也不要有任何其他解释性话语。"
