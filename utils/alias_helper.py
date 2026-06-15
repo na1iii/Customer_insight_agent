@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 alias_helper.py - 企业简称与同义词映射加载工具
-通过内存映射，支持简称到全称（以及全称到简称）的快速查找，避免对数据库进行写操作。
+通过内存映射，支持简称到全称（以及全称到简称）的快速查找，直接从关系数据库的 brief2full_name 表加载数据。
 """
 
 import os
-import pandas as pd
+from sqlalchemy import create_engine, text
 
 class AliasHelper:
     _instance = None
@@ -26,37 +26,48 @@ class AliasHelper:
 
     def load_aliases(self):
         try:
-            # 获取当前文件所在位置的绝对路径
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            file_path = os.path.join(base_dir, "data", "enterprise_aliases.xlsx")
-            
-            if not os.path.exists(file_path):
-                print(f"【AliasHelper Warning】别名映射文件不存在: {file_path}")
+            db_url = os.getenv("DATABASE_URL", "")
+            if not db_url:
+                print("【AliasHelper Warning】DATABASE_URL 环境变量未配置，无法加载别名。")
                 return
                 
-            # 读取 Excel 文件
-            df = pd.read_excel(file_path)
-            
-            # 使用列的索引或列名获取数据，增强健壮性
-            col_official = "原始词" if "原始词" in df.columns else df.columns[0]
-            col_alias = "同义词" if "同义词" in df.columns else df.columns[1]
-            
-            for _, row in df.iterrows():
-                official = str(row[col_official]).strip()
-                alias = str(row[col_alias]).strip()
+            # 确保使用 utf8mb4 连接
+            if "?" in db_url:
+                base_url = db_url.split("?")[0]
+                db_url = f"{base_url}?charset=utf8mb4"
+            else:
+                db_url = f"{db_url}?charset=utf8mb4"
                 
-                # 过滤无效空值与 NaN 字符串
-                if (official and alias and 
-                    official.lower() != "nan" and 
-                    alias.lower() != "nan" and 
-                    official != "" and 
-                    alias != ""):
-                    self.alias_to_official[alias] = official
-                    self.official_to_alias[official] = alias
-            
-            print(f"【AliasHelper】成功从本地内存加载 {len(self.official_to_alias)} 条企业简称对照数据。")
+            # 使用临时连接引擎以避免长连接占用
+            engine = create_engine(
+                db_url,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 5}
+            )
+            with engine.connect() as conn:
+                res = conn.execute(text("SELECT brief_name, full_name FROM brief2full_name"))
+                count = 0
+                for row in res:
+                    brief_raw = row[0]
+                    full = row[1]
+                    if not brief_raw or not full:
+                        continue
+                    brief_raw = str(brief_raw).strip()
+                    full = str(full).strip()
+                    if not brief_raw or not full:
+                        continue
+                        
+                    # 拆分可能由中英文逗号隔开的多个简称
+                    briefs = [b.strip() for b in brief_raw.replace("，", ",").split(",") if b.strip()]
+                    for brief in briefs:
+                        self.alias_to_official[brief] = full
+                        if full not in self.official_to_alias:
+                            self.official_to_alias[full] = brief
+                        count += 1
+                print(f"【AliasHelper】成功从关系数据库加载 {count} 条企业简称对照数据。")
         except Exception as e:
-            print(f"【AliasHelper Error】加载别名文件异常: {e}")
+            print(f"【AliasHelper Error】加载关系数据库别名表异常: {e}")
 
 # 全局单例对象
 alias_helper = AliasHelper()
+

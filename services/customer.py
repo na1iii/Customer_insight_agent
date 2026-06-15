@@ -127,10 +127,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
                 f"### 🔍 检索反馈\n\n"
                 f"很抱歉，我们目前的业务数据库中暂时没有收录与您查询的 **“{keyword}”** 相关的商业分析或画像数据。\n\n"
                 f"💡 **推荐您尝试检索以下已收录的行业标杆企业：**\n"
-                f"* 🏢 **上海电信**（中国电信股份有限公司上海分公司）\n"
-                f"* 🏢 **上海移动**（中国移动通信集团上海有限公司）\n"
-                f"* 🏢 **上海联通**（中国联合网络通信有限公司上海市分公司）\n"
-                f"* 🏢 **钛度智能**（钛度智能机器人设计与研发中心）\n\n"
+                f"* 🏢 **中国电信股份有限公司上海分公司**\n\n"
                 f"*(提示：如需分析更多企业，请确保将数据录入到 MySQL 后台的 5 张业务表中，系统将自动支持检索。)*"
             )
             return {
@@ -154,6 +151,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
     
     # 从业务数据库中检索企业基础线索、微信文章和项目合作新闻
     db_clue_info = None
+    db_snap_info = None
     db_articles = []
     db_cooperations = []
     db_hit = False
@@ -174,6 +172,15 @@ def handle(keyword: str, user_id: int = None) -> dict:
         )
         if clue_res:
             db_clue_info = clue_res[0]
+            
+        # 新增：从 sgs_cust_snap 中检索工商基础信息
+        snap_res = db.query_business_db(
+            "SELECT `legal_representative`, `registered_capital`, `business_scope` "
+            "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym OR `business_name` LIKE :keyword LIMIT 1",
+            {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+        )
+        if snap_res:
+            db_snap_info = snap_res[0]
             
         # B. 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
         extract_res = db.query_business_db(
@@ -211,7 +218,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
             db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
             
-        if db_clue_info or db_documents:
+        if db_clue_info or db_documents or db_snap_info:
             db_hit = True
     except Exception as db_err:
         db.log_event(user_id, "customer", "ERROR", f"直连 MySQL 检索企业多源数据失败: {db_err}")
@@ -240,8 +247,15 @@ def handle(keyword: str, user_id: int = None) -> dict:
     company_metadata = {}
     
     db_context_pieces = []
+    ent_name = keyword
     if db_clue_info:
-        ent = db_clue_info.get("EntName", keyword)
+        ent_name = db_clue_info.get("EntName", keyword)
+        
+    legal_rep = db_snap_info.get("legal_representative") or "暂无" if db_snap_info else "暂无"
+    reg_capital = db_snap_info.get("registered_capital") or "暂无" if db_snap_info else "暂无"
+    biz_scope = db_snap_info.get("business_scope") or "暂无" if db_snap_info else "暂无"
+
+    if db_clue_info:
         prov = db_clue_info.get("Province", "")
         city = db_clue_info.get("City", "")
         scale = db_clue_info.get("Scale_revenue", "")
@@ -252,14 +266,25 @@ def handle(keyword: str, user_id: int = None) -> dict:
         industry = db_clue_info.get("Industry", "")
         db_context_pieces.append(
             f"【企业基础资质与财务属性】:\n"
-            f"企业名称: {ent}\n"
+            f"企业名称: {ent_name}\n"
             f"行政归属: {prov}{city}\n"
             f"营收规模: {scale}\n"
             f"营业收入增长率: {growth}\n"
             f"所获榜单资质: {awards}\n"
             f"对接客户经理: {manager}\n"
             f"成立日期: {establish_date}\n"
-            f"所属行业: {industry}"
+            f"所属行业: {industry}\n"
+            f"法定代表人: {legal_rep}\n"
+            f"注册资本: {reg_capital}\n"
+            f"主营范围: {biz_scope}"
+        )
+    elif db_snap_info:
+        db_context_pieces.append(
+            f"【企业基础工商属性】:\n"
+            f"企业名称: {ent_name}\n"
+            f"法定代表人: {legal_rep}\n"
+            f"注册资本: {reg_capital}\n"
+            f"主营范围: {biz_scope}"
         )
     db_context_str = "\n\n".join(db_context_pieces)
 
@@ -304,10 +329,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             f"### 🔍 检索反馈\n\n"
             f"很抱歉，我们目前的业务数据库中暂时没有收录与您查询的 **“{keyword}”** 相关的商业分析或画像数据。\n\n"
             f"💡 **推荐您尝试检索以下已收录的行业标杆企业：**\n"
-            f"* 🏢 **上海电信**（中国电信股份有限公司上海分公司）\n"
-            f"* 🏢 **上海移动**（中国移动通信集团上海有限公司）\n"
-            f"* 🏢 **上海联通**（中国联合网络通信有限公司上海市分公司）\n"
-            f"* 🏢 **钛度智能**（钛度智能机器人设计与研发中心）\n\n"
+            f"* 🏢 **中国电信股份有限公司上海分公司**\n\n"
             f"*(提示：如需分析更多企业，请确保将数据录入到 MySQL 后台的 5 张业务表中，系统将自动支持检索。)*"
         )
         return {
@@ -352,7 +374,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             f"【检索上下文信息 ({source_type})】:\n"
             f"{context}\n\n"
             f"报告必须严格按照以下结构输出，且不得包含任何多余的开场白、问候语或首尾总结词：\n"
-            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、企业规模、成立日期、行业、核心资质（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性（如企业规模、核心资质等），请结合你的知识库补充或显示“本次检索未提供”。\n"
+            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、法定代表人、注册资本、企业规模、成立日期、行业、主营范围、核心资质（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性，请结合你检索到的上下文和你的知识库补充或显示“本次检索未提供”。\n"
             f"2. **二、近期舆情动态**：按时间倒序展现近期该企业的舆情线索与新闻（如果有多条，必须且最多只显示最新的前五条）。每一条动态需包含：发布日期、主题/标题、数据源、内容摘要。\n"
             f"3. **三、与上海电信参与合作的内容**：请深度挖掘作为上海电信（运营商与数字化使能者），在面对该企业时可以与其参与和开展的合作内容（结合其行业属性、痛点和近期动态，从算力网络、5G-A、云网融合、工业互联网或安全交付等方面给出针对性的合作契机与方案）。\n"
             f"4. **四、总结**：针对上述企业概况、舆情及合作内容做一小段精炼的简要总结。\n\n"
@@ -416,10 +438,7 @@ async def handle_stream(keyword: str, user_id: int = None):
                 f"### 🔍 检索反馈\n\n"
                 f"很抱歉，我们目前的业务数据库中暂时没有收录与您查询的 **“{keyword}”** 相关的商业分析或画像数据。\n\n"
                 f"💡 **推荐您尝试检索以下已收录的行业标杆企业：**\n"
-                f"* 🏢 **上海电信**（中国电信股份有限公司上海分公司）\n"
-                f"* 🏢 **上海移动**（中国移动通信集团上海有限公司）\n"
-                f"* 🏢 **上海联通**（中国联合网络通信有限公司上海市分公司）\n"
-                f"* 🏢 **钛度智能**（钛度智能机器人设计与研发中心）\n\n"
+                f"* 🏢 **中国电信股份有限公司上海分公司**\n\n"
                 f"*(提示：如需分析更多企业，请确保将数据录入到 MySQL 后台的 5 张业务表中，系统将自动支持检索。)*"
             )
             chunk_size = 12
@@ -447,6 +466,7 @@ async def handle_stream(keyword: str, user_id: int = None):
     
     # 2. 从业务数据库中检索企业基础线索、微信文章和项目合作新闻
     db_clue_info = None
+    db_snap_info = None
     db_articles = []
     db_cooperations = []
     db_hit = False
@@ -454,7 +474,7 @@ async def handle_stream(keyword: str, user_id: int = None):
     
     # 在线程池中执行关系数据库查询，避免阻塞事件循环
     def query_db_sync():
-        nonlocal db_clue_info, db_hit
+        nonlocal db_clue_info, db_snap_info, db_hit
         try:
             clue_res = db.query_business_db(
                 "SELECT `企业名称` AS EntName, `省份` AS Province, `城市` AS City, "
@@ -466,6 +486,15 @@ async def handle_stream(keyword: str, user_id: int = None):
             )
             if clue_res:
                 db_clue_info = clue_res[0]
+                
+            # 新增：从 sgs_cust_snap 中检索工商基础信息
+            snap_res = db.query_business_db(
+                "SELECT `legal_representative`, `registered_capital`, `business_scope` "
+                "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym OR `business_name` LIKE :keyword LIMIT 1",
+                {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+            )
+            if snap_res:
+                db_snap_info = snap_res[0]
                 
             # 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
             extract_res = db.query_business_db(
@@ -503,7 +532,7 @@ async def handle_stream(keyword: str, user_id: int = None):
                 db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
                 db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
                 
-            if db_clue_info or db_documents:
+            if db_clue_info or db_documents or db_snap_info:
                 db_hit = True
         except Exception as db_err:
             db.log_event(user_id, "customer", "ERROR", f"直连 MySQL 检索企业多源数据失败: {db_err}")
@@ -546,8 +575,15 @@ async def handle_stream(keyword: str, user_id: int = None):
     company_metadata = {}
     
     db_context_pieces = []
+    ent_name = keyword
     if db_clue_info:
-        ent = db_clue_info.get("EntName", keyword)
+        ent_name = db_clue_info.get("EntName", keyword)
+        
+    legal_rep = db_snap_info.get("legal_representative") or "暂无" if db_snap_info else "暂无"
+    reg_capital = db_snap_info.get("registered_capital") or "暂无" if db_snap_info else "暂无"
+    biz_scope = db_snap_info.get("business_scope") or "暂无" if db_snap_info else "暂无"
+
+    if db_clue_info:
         prov = db_clue_info.get("Province", "")
         city = db_clue_info.get("City", "")
         scale = db_clue_info.get("Scale_revenue", "")
@@ -558,14 +594,25 @@ async def handle_stream(keyword: str, user_id: int = None):
         industry = db_clue_info.get("Industry", "")
         db_context_pieces.append(
             f"【企业基础资质与财务属性】:\n"
-            f"企业名称: {ent}\n"
+            f"企业名称: {ent_name}\n"
             f"行政归属: {prov}{city}\n"
             f"营收规模: {scale}\n"
             f"营业收入增长率: {growth}\n"
             f"所获榜单资质: {awards}\n"
             f"对接客户经理: {manager}\n"
             f"成立日期: {establish_date}\n"
-            f"所属行业: {industry}"
+            f"所属行业: {industry}\n"
+            f"法定代表人: {legal_rep}\n"
+            f"注册资本: {reg_capital}\n"
+            f"主营范围: {biz_scope}"
+        )
+    elif db_snap_info:
+        db_context_pieces.append(
+            f"【企业基础工商属性】:\n"
+            f"企业名称: {ent_name}\n"
+            f"法定代表人: {legal_rep}\n"
+            f"注册资本: {reg_capital}\n"
+            f"主营范围: {biz_scope}"
         )
     db_context_str = "\n\n".join(db_context_pieces)
 
@@ -610,10 +657,7 @@ async def handle_stream(keyword: str, user_id: int = None):
             f"### 🔍 检索反馈\n\n"
             f"很抱歉，我们目前的业务数据库中暂时没有收录与您查询的 **“{keyword}”** 相关的商业分析或画像数据。\n\n"
             f"💡 **推荐您尝试检索以下已收录的行业标杆企业：**\n"
-            f"* 🏢 **上海电信**（中国电信股份有限公司上海分公司）\n"
-            f"* 🏢 **上海移动**（中国移动通信集团上海有限公司）\n"
-            f"* 🏢 **上海联通**（中国联合网络通信有限公司上海市分公司）\n"
-            f"* 🏢 **钛度智能**（钛度智能机器人设计与研发中心）\n\n"
+            f"* 🏢 **中国电信股份有限公司上海分公司**\n\n"
             f"*(提示：如需分析更多企业，请确保将数据录入到 MySQL 后台的 5 张业务表中，系统将自动支持检索。)*"
         )
         
@@ -663,7 +707,7 @@ async def handle_stream(keyword: str, user_id: int = None):
             f"【检索上下文信息 ({source_type})】:\n"
             f"{context}\n\n"
             f"报告必须严格按照以下结构输出，且不得包含任何多余的开场白、问候语或首尾总结词：\n"
-            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、企业规模、成立日期、行业、核心资质（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性（如企业规模、核心资质等），请结合你的知识库补充或显示“本次检索未提供”。\n"
+            f"1. **一、企业概括**：展示企业基本属性。必须以标准的 Markdown 表格形式展示（表头为：| 维度 | 内容 |）。包含的维度必须且仅有：企业名称、法定代表人、注册资本、企业规模、成立日期、行业、主营范围、核心资质（注意：绝对不要包含“对接客户经理”）。如果上下文数据中没有提供某些属性，请结合你检索到的上下文 and 你的知识库补充或显示“本次检索未提供”。\n"
             f"2. **二、近期舆情动态**：按时间倒序展现近期该企业的舆情线索与新闻（如果有多条，必须且最多只显示最新的前五条）。每一条动态需包含：发布日期、主题/标题、数据源、内容摘要。\n"
             f"3. **三、与上海电信参与合作的内容**：请深度挖掘作为上海电信（运营商与数字化使能者），在面对该企业时可以与其参与和开展的合作内容（结合其行业属性、痛点和近期动态，从算力网络、5G-A、云网融合、工业互联网或安全交付等方面给出针对性的合作契机与方案）。\n"
             f"4. **四、总结**：针对上述企业概况、舆情及合作内容做一小段精炼的简要总结。\n\n"

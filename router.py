@@ -136,10 +136,10 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
         for comp in ["电信", "移动", "联通", "钛度", "特斯拉"]:
             if comp in text_lower:
                 keyword_map = {
-                    "电信": "上海电信",
-                    "移动": "上海移动",
-                    "联通": "上海联通",
-                    "钛度": "钛度智能",
+                    "电信": "中国电信股份有限公司上海分公司",
+                    "移动": "中国移动通信集团上海有限公司",
+                    "联通": "中国联合网络通信有限公司上海市分公司",
+                    "钛度": "钛度智能机器人设计与研发中心",
                     "特斯拉": "特斯拉"
                 }
                 return TaskCommand(intent="query_customer", keyword=keyword_map[comp])
