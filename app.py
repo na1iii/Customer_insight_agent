@@ -327,6 +327,7 @@ async def export_potential_endpoint(
     industry: Optional[str] = None,
     keyword: Optional[str] = None,
     score_min: int = 11,
+    limit: Optional[int] = None,
     user_id: Optional[int] = None,
 ):
     try:
@@ -335,6 +336,7 @@ async def export_potential_endpoint(
             industry=industry,
             keyword=keyword,
             score_min=score_min,
+            limit=limit,
             user_id=user_id,
         )
         filename = os.path.basename(excel_path)

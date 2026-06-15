@@ -2600,7 +2600,8 @@
                 } else {
                     list.innerHTML = items.map(item => {
                         const tags = (item.signals || []).map(tag => `<span class="potential-tag">${tag}</span>`).join('');
-                        const nameHtml = item.link ? `<a href="${item.link}" target="_blank" class="table-link">${item.name}</a>` : item.name;
+                        const displayName = item.customer_name || item.name;
+                        const nameHtml = item.link ? `<a href="${item.link}" target="_blank" class="table-link">${displayName}</a>` : displayName;
                         return `
                             <div class="potential-card">
                                 <div class="potential-card-header">
@@ -2640,9 +2641,10 @@
                 
                 let trs = '';
                 payload.data.forEach(item => {
+                    const displayName = item.customer_name || item.name;
                     trs += `
                         <tr>
-                            <td><a href="${item.link}" target="_blank" class="table-link">${item.name}</a></td>
+                            <td><a href="${item.link}" target="_blank" class="table-link">${displayName}</a></td>
                             <td>${item.industry}</td>
                             <td>${item.scale}</td>
                             <td><span class="score-pill">${item.score}分</span></td>

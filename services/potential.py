@@ -130,10 +130,33 @@ def extract_days_limit(k: str) -> int:
 
 def extract_limit(k: str) -> Optional[int]:
     import re
-    # 匹配类似 "前10个", "推荐5家", "20名", "30条" 等表示数量的词
-    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+)\s*(?:个|家|名|条|份)', k)
+    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万]+)\s*(?:个|家|名|条|份)', k)
     if match:
-        return int(match.group(1))
+        num_str = match.group(1)
+        if num_str.isdigit():
+            return int(num_str)
+        
+        num_map = {'零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+        unit_map = {'十': 10, '百': 100, '千': 1000, '万': 10000}
+        
+        if num_str in num_map:
+            return num_map[num_str]
+        if num_str == '十':
+            return 10
+            
+        result = 0
+        tmp = 0
+        for char in num_str:
+            if char in num_map:
+                tmp = num_map[char]
+            elif char in unit_map:
+                unit = unit_map[char]
+                if tmp == 0 and unit == 10:
+                    tmp = 1
+                result += tmp * unit
+                tmp = 0
+        result += tmp
+        return result
     return None
 
 def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, raw_text: str = None) -> Dict[str, Any]:
@@ -155,6 +178,10 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, ra
     limit = extract_limit(text_value)
 
     cleaned = text_value
+    # 移除包含数量的表达方式
+    import re
+    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万]+)\s*(?:个|家|名|条|份)', ' ', cleaned)
+    
     for word in NOISE_WORDS:
         cleaned = cleaned.replace(word, " ")
     if district:
@@ -252,6 +279,19 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
         placeholders = ", ".join([f":name_{i}" for i in range(len(company_names))])
         params = {f"name_{i}": name for i, name in enumerate(company_names)}
         
+        # 1. 关联查询标准企业全称 (brief2full_name)
+        sql_brief = f"SELECT `brief_name`, `full_name` FROM brief2full_name WHERE `brief_name` IN ({placeholders})"
+        try:
+            brief_records = db.query_business_db(sql_brief, params)
+            brief_map = {r.get("brief_name"): r.get("full_name") for r in brief_records if r.get("brief_name") and r.get("full_name")}
+            for row in results:
+                ent_name = row["name"]
+                if ent_name in brief_map:
+                    row["customer_name"] = brief_map[ent_name]
+        except Exception as e:
+            db.log_event(None, "potential", "WARNING", f"关联企业标准名称失败: {e}")
+        
+        # 2. 关联查询榜单信息 (ranking_ent_dtl_clue)
         sql = f"SELECT `企业名称`, `资质名称`, `榜单名称`, `链接`, `到期时间`, `榜单废弃` FROM ranking_ent_dtl_clue WHERE `企业名称` IN ({placeholders})"
         try:
             rankings = db.query_business_db(sql, params)
@@ -731,6 +771,7 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
 
 
 def _build_export_url(filters: Dict[str, Any]) -> str:
+    from urllib.parse import urlencode
     params = {"score_min": filters.get("score_min") or DEFAULT_SCORE_MIN}
     if filters.get("district"):
         params["district"] = filters["district"]
@@ -738,6 +779,8 @@ def _build_export_url(filters: Dict[str, Any]) -> str:
         params["industry"] = filters["industry"]
     if filters.get("keyword"):
         params["keyword"] = filters["keyword"]
+    if filters.get("limit"):
+        params["limit"] = filters["limit"]
     return "/api/potential/export?" + urlencode(params)
 
 
@@ -750,8 +793,11 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
     filters = parse_filters(keyword, raw_text=raw_text)
     db.log_event(user_id, "potential", "INFO", f"开始检索高潜客户线索。过滤条件: {filters}")
 
-    limit = filters.get("limit") or DEFAULT_LIMIT
+    user_limit = filters.get("limit")
+    limit = user_limit or DEFAULT_LIMIT
     items, total_count = get_recommendations(filters, limit=limit)
+    if user_limit:
+        total_count = len(items)
     
     if items:
         try:
@@ -829,6 +875,7 @@ def export_excel(
     industry: Optional[str] = None,
     keyword: Optional[str] = None,
     score_min: int = DEFAULT_SCORE_MIN,
+    limit: Optional[int] = None,
     user_id: Optional[int] = None,
 ) -> str:
     filter_text = " ".join([value for value in [district, industry, keyword] if value])
@@ -840,8 +887,11 @@ def export_excel(
     if keyword:
         filters["keyword"] = keyword
     filters["score_min"] = score_min
+    if limit is not None:
+        filters["limit"] = limit
 
-    items, _ = get_recommendations(filters, limit=500, skip_rag=True)
+    export_limit = limit if limit is not None else 500
+    items, _ = get_recommendations(filters, limit=export_limit, skip_rag=True)
 
     safe_scope = district or industry or keyword or "全市"
     excel_path = write_items_to_excel(items, safe_scope)

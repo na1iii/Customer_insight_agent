@@ -109,12 +109,18 @@ def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit:
         return documents
 
     import json
+    from utils.alias_helper import alias_helper
     for row in rows:
         district = _clean_text(row.get("district")) or region_name
-        title = _clean_text(row.get("title")) or _clean_text(row.get("ent_name")) or "区域商机"
+        
+        # 转换为公司全称
+        raw_ent_name = _clean_text(row.get("ent_name"))
+        full_ent_name = alias_helper.alias_to_official.get(raw_ent_name, raw_ent_name)
+        
+        title = _clean_text(row.get("title")) or full_ent_name or "区域商机"
         content = "\n".join([
             f"行政区：{district}",
-            f"企业：{_clean_text(row.get('ent_name'))}",
+            f"企业：{full_ent_name}",
             f"行业：{_clean_text(row.get('industry'))}",
             f"商机等级：{_clean_text(row.get('score_label'))}",
             f"商机评分：{_clean_text(row.get('score'))}",
@@ -133,7 +139,7 @@ def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit:
             "district": district,
             "industry": _clean_text(row.get("industry")),
             "doc_type": "regional_opportunity",
-            "entity_name": _clean_text(row.get("ent_name")),
+            "entity_name": full_ent_name,
         })
     return documents
 
