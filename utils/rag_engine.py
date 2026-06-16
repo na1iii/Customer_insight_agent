@@ -441,7 +441,7 @@ class RAGEngine:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.0,
-                timeout=8.0
+                timeout=30.0
             )
             
             content = response.choices[0].message.content

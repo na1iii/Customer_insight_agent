@@ -44,17 +44,10 @@ import services.industry as industry
 import services.potential as potential
 import services.general_chat as general_chat
 import utils.db_helper as db
-from scripts.update_llm_regions import run_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动后台 AI 行政区更新任务 (每 60 秒运行一次)
-    ai_worker_task = asyncio.create_task(run_worker())
-    
     yield
-    
-    # 服务关闭时清理任务
-    ai_worker_task.cancel()
 
 app = FastAPI(title="AI 客户智能洞察智能体 API", lifespan=lifespan)
 
