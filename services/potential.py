@@ -130,7 +130,7 @@ def extract_days_limit(k: str) -> int:
 
 def extract_limit(k: str) -> Optional[int]:
     import re
-    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万]+)\s*(?:个|家|名|条|份)', k)
+    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)', k)
     if match:
         num_str = match.group(1)
         if num_str.isdigit():
@@ -180,7 +180,7 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, ra
     cleaned = text_value
     # 移除包含数量的表达方式
     import re
-    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万]+)\s*(?:个|家|名|条|份)', ' ', cleaned)
+    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)', ' ', cleaned)
     
     for word in NOISE_WORDS:
         cleaned = cleaned.replace(word, " ")
