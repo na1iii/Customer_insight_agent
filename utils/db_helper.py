@@ -1380,47 +1380,9 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
     groups.sort(key=lambda group: get_group_order(group["name"]))
     return {"date": get_today_display(), "total_count": total_count, "group_count": len(groups), "groups": groups}
 
-_BRIEF2FULLNAME_REGION_CACHE = {}
-_LAST_REGION_CACHE_TIME = 0
-
-def get_region_from_db(ent_name: str) -> str:
-    global _BRIEF2FULLNAME_REGION_CACHE, _LAST_REGION_CACHE_TIME
-    if time.time() - _LAST_REGION_CACHE_TIME > 600:
-        try:
-            res = query_business_db("SELECT brief_name, full_name, region FROM brief2full_name")
-            new_cache = {}
-            for row in res:
-                region = (row.get("region") or "").strip()
-                if not region: continue
-                full = (row.get("full_name") or "").strip()
-                if full: new_cache[full] = region
-                brief_raw = (row.get("brief_name") or "").strip()
-                if brief_raw:
-                    briefs = [b.strip() for b in brief_raw.replace("，", ",").split(",") if b.strip()]
-                    for b in briefs:
-                        new_cache[b] = region
-            _BRIEF2FULLNAME_REGION_CACHE = new_cache
-            _LAST_REGION_CACHE_TIME = time.time()
-        except Exception:
-            pass
-    return _BRIEF2FULLNAME_REGION_CACHE.get(ent_name, "")
-
-def normalize_db_region(region_str: str) -> str:
-    region_str = region_str.strip()
-    if not region_str: return ""
-    if "市外" in region_str or "其他" in region_str:
-        return "EXCLUDE"
-    for dist in DISTRICTS:
-        if dist in region_str:
-            return dist
-        short = dist.replace("新区", "").replace("区", "")
-        if short and short in region_str:
-            return dist
-    return ""
-
 _WEIXIN_EXTRACT_CACHE = {}
 
-def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limit: int = 30) -> list:
+def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limit: int = 30, require_db_region: bool = False) -> list:
     """直接查询 weixin_deepseek_extract_d 表并按规则进行打分和过滤（附带5分钟内存缓存）。"""
     global _WEIXIN_EXTRACT_CACHE
     cache_key = f"{limit}_{district}_{days_limit}"
@@ -1442,10 +1404,10 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
     sql = text(f"""
         SELECT a.id, a.EntName, a.EnterpriseNature, a.Industry1, a.Industry2, a.Industry3, 
                a.article_title, a.Abstract, a.Tag_SS, a.Tag_IPO, a.Tag_RZ, a.Tag_SG, a.OtherNature, 
-               a.CapitalNature, a.NewsTag,
+               a.CapitalNature, a.NewsTag, a.region,
                a.publish_time, a.article_url, a.Scope, a.wechat_name, 
                LEFT(a.article_content, 5000) AS article_content_prefix
-        FROM weixin_deepseek_extract_d a
+        FROM weixin_deepseek_extract_d_new a
         {where_sql}
         ORDER BY a.publish_time DESC
         LIMIT :limit
@@ -1468,18 +1430,18 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         if has_any(ent_name, ["大学", "研究院", "学院"]):
             continue
             
-        # 优先使用 brief2full_name 中的 region 映射
-        mapped_region = get_region_from_db(ent_name)
-        if mapped_region:
-            normalized_reg = normalize_db_region(mapped_region)
-            if normalized_reg == "EXCLUDE":
-                continue
-            if normalized_reg:
-                region = normalized_reg
-            else:
-                region = detect_article_region(row)
-        else:
+        # 优先读取新表中自带的 region 字段
+        raw_region = (row.get("region") or "").strip()
+        if require_db_region and not raw_region:
+            continue
+            
+        region = raw_region
+        if not region:
             region = detect_article_region(row)
+            
+        # 区域模块展示时，将临港新片区合并到浦东新区里面
+        if require_db_region and region in ["临港新片区", "临港"]:
+            region = "浦东新区"
             
         if district and district != "上海市" and district != region:
             continue
@@ -1576,7 +1538,7 @@ def get_articles_summary(district: str = None, days_limit: int = 30) -> dict:
         "district_counts": [],
     }
     try:
-        raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit)
+        raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit, require_db_region=True)
     except Exception as e:
         print(f"【Article Summary Error】获取 {district or '上海市'} 商机汇总失败: {e}")
         return empty_summary

@@ -410,7 +410,7 @@ def _build_enterprise_rag_document(row: Dict[str, Any]) -> Dict[str, Any]:
         "title": name or "高潜候选企业",
         "content": content,
         "publish_date": _clean_text(row.get("latest_date")) or _clean_text(row.get("registered_at")) or datetime.now().strftime("%Y-%m-%d"),
-        "source": "weixin_deepseek_extract_d",
+        "source": "weixin_deepseek_extract_d_new",
         "link": _clean_text(row.get("latest_link")),
         "company": name,
         "district": region,
@@ -785,7 +785,7 @@ def _build_export_url(filters: Dict[str, Any]) -> str:
 
 
 def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
-    if not keyword and not raw_text:
+    if not keyword:
         return {
             "type": "text",
             "content": "请问您想挖掘哪个行政区或哪个行业的高潜客户？（例如：浦东新区、人工智能行业等）"
