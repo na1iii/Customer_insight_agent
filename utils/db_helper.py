@@ -467,25 +467,11 @@ def decode_column_name(col_name: str) -> str:
 def query_business_db(sql: str, params: dict = None) -> list:
     """
     通用业务数据库查询接口。
-    强制使用 utf8mb4 字符集进行直连，执行 SQL 级过滤，
+    直接复用全局已初始化好的数据库引擎，执行 SQL 级过滤，
     拉取数据后在内存中进行轻量级列名还原，最终以干净的 dict 列表形式返回。
     """
-    db_url = os.getenv("DATABASE_URL", "")
-    if not db_url:
-        print("【Database Business Query Error】DATABASE_URL 环境变量未配置")
-        return []
-        
-    # 强制在 URL 参数中追加 charset=utf8mb4 字符集
-    if "?" in db_url:
-        base_url = db_url.split("?")[0]
-        db_url = f"{base_url}?charset=utf8mb4"
-    else:
-        db_url = f"{db_url}?charset=utf8mb4"
-        
-    # 创建临时专用引擎以保障连接与资源隔离
-    temp_engine = create_db_engine(db_url)
     try:
-        with temp_engine.connect() as conn:
+        with engine.connect() as conn:
             res = conn.execute(text(sql), params or {})
             raw_keys = list(res.keys())
             clean_keys = [decode_column_name(k) for k in raw_keys]

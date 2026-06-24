@@ -11,6 +11,32 @@ from openai import OpenAI, AsyncOpenAI
 from utils.rag_engine import RAGEngine
 import utils.db_helper as db
 from utils.alias_helper import alias_helper
+import time
+
+# 全局企业画像报告内存缓存
+REPORT_CACHE = {}
+CACHE_TTL = 12 * 3600  # 缓存12小时
+
+def get_cached_report(keyword: str) -> str:
+    """获取缓存的画像报告，若不存在或已过期则返回 None"""
+    cache_item = REPORT_CACHE.get(keyword)
+    if cache_item:
+        if time.time() - cache_item["timestamp"] < CACHE_TTL:
+            print(f"【Cache Hit】成功命中企业画像缓存: {keyword}")
+            return cache_item["content"]
+        else:
+            print(f"【Cache Expired】企业画像缓存已过期: {keyword}")
+            REPORT_CACHE.pop(keyword, None)
+    return None
+
+def set_cached_report(keyword: str, content: str):
+    """写入缓存"""
+    if keyword and content:
+        REPORT_CACHE[keyword] = {
+            "content": content,
+            "timestamp": time.time()
+        }
+        print(f"【Cache Set】成功写入企业画像缓存: {keyword}")
 
 def find_exact_company(keyword: str) -> str:
     """
@@ -144,6 +170,14 @@ def handle(keyword: str, user_id: int = None) -> dict:
                 "type": "text",
                 "content": recommend_content
             }
+            
+    # 尝试读取缓存
+    cached_content = get_cached_report(keyword)
+    if cached_content:
+        return {
+            "type": "text",
+            "content": cached_content
+        }
         
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
@@ -167,8 +201,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
             "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
             "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
-            "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym OR `企业名称` LIKE :keyword LIMIT 1",
-            {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+            "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym LIMIT 1",
+            {"official": official_name, "synonym": synonym_name}
         )
         if clue_res:
             db_clue_info = clue_res[0]
@@ -176,8 +210,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
         # 新增：从 sgs_cust_snap 中检索工商基础信息
         snap_res = db.query_business_db(
             "SELECT `legal_representative`, `registered_capital`, `business_scope` "
-            "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym OR `business_name` LIKE :keyword LIMIT 1",
-            {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+            "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym LIMIT 1",
+            {"official": official_name, "synonym": synonym_name}
         )
         if snap_res:
             db_snap_info = snap_res[0]
@@ -189,10 +223,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "`publish_time` AS date, `wechat_name` AS source "
             "FROM weixin_deepseek_extract_d "
             "WHERE `EntName` = :official OR `EntName` = :synonym OR `EntShortName` = :official OR `EntShortName` = :synonym "
-            "OR `EntName` LIKE :keyword OR `EntShortName` LIKE :keyword "
-            "OR `article_title` LIKE :keyword OR `article_content` LIKE :keyword "
             "ORDER BY `publish_time` DESC LIMIT 15",
-            {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+            {"official": official_name, "synonym": synonym_name}
         )
         
         for a in extract_res:
@@ -395,9 +427,11 @@ def handle(keyword: str, user_id: int = None) -> dict:
             timeout=15.0
         )
         
+        report_content = response.choices[0].message.content
+        set_cached_report(keyword, report_content)
         return {
             "type": "text",
-            "content": response.choices[0].message.content
+            "content": report_content
         }
         
     except Exception as e:
@@ -456,6 +490,15 @@ async def handle_stream(keyword: str, user_id: int = None):
                 await asyncio.sleep(0.015)
             return
 
+    # 尝试读取缓存
+    cached_content = get_cached_report(keyword)
+    if cached_content:
+        chunk_size = 15
+        for i in range(0, len(cached_content), chunk_size):
+            yield cached_content[i:i+chunk_size]
+            await asyncio.sleep(0.005)
+        return
+
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
@@ -481,8 +524,8 @@ async def handle_stream(keyword: str, user_id: int = None):
                 "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
                 "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
                 "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
-                "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym OR `企业名称` LIKE :keyword LIMIT 1",
-                {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+                "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym LIMIT 1",
+                {"official": official_name, "synonym": synonym_name}
             )
             if clue_res:
                 db_clue_info = clue_res[0]
@@ -490,8 +533,8 @@ async def handle_stream(keyword: str, user_id: int = None):
             # 新增：从 sgs_cust_snap 中检索工商基础信息
             snap_res = db.query_business_db(
                 "SELECT `legal_representative`, `registered_capital`, `business_scope` "
-                "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym OR `business_name` LIKE :keyword LIMIT 1",
-                {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+                "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym LIMIT 1",
+                {"official": official_name, "synonym": synonym_name}
             )
             if snap_res:
                 db_snap_info = snap_res[0]
@@ -503,10 +546,8 @@ async def handle_stream(keyword: str, user_id: int = None):
                 "`publish_time` AS date, `wechat_name` AS source "
                 "FROM weixin_deepseek_extract_d "
                 "WHERE `EntName` = :official OR `EntName` = :synonym OR `EntShortName` = :official OR `EntShortName` = :synonym "
-                "OR `EntName` LIKE :keyword OR `EntShortName` LIKE :keyword "
-                "OR `article_title` LIKE :keyword OR `article_content` LIKE :keyword "
                 "ORDER BY `publish_time` DESC LIMIT 15",
-                {"official": official_name, "synonym": synonym_name, "keyword": f"%{keyword}%"}
+                {"official": official_name, "synonym": synonym_name}
             )
             
             for a in extract_res:
@@ -729,10 +770,14 @@ async def handle_stream(keyword: str, user_id: int = None):
             stream=True
         )
         
+        full_response_text = ""
         async for chunk in response:
             delta_content = chunk.choices[0].delta.content
             if delta_content:
+                full_response_text += delta_content
                 yield delta_content
+                
+        set_cached_report(keyword, full_response_text)
                 
     except Exception as e:
         import traceback
