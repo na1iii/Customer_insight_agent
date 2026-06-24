@@ -646,7 +646,7 @@
         async function loadData() {
             const district = getDistrictParam();
             const controller = new AbortController();
-            const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+            const timeoutId = window.setTimeout(() => controller.abort(), 60000);
 
             try {
                 const resp = await fetch(buildApiUrl(district), { signal: controller.signal });
