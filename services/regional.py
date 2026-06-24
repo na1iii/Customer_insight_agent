@@ -22,6 +22,8 @@ REGION_ALIASES = {
     "上海徐汇": "徐汇区",
     "徐汇": "徐汇区",
     "浦东": "浦东新区",
+    "临港": "浦东新区",
+    "临港新片区": "浦东新区",
 }
 
 CITY_KEYWORDS = ["上海市", "全上海", "全市", "上海", "16个区", "十六个区"]
@@ -98,11 +100,11 @@ def _clean_text(value) -> str:
 
 
 def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit: int = 80, days_limit: int = 30) -> list[dict]:
-    """从 weixin_deepseek_extract_d 加载区域 RAG 文档，保持与明细页一致的数据口径。"""
+    """从 weixin_deepseek_extract_d_new 加载区域 RAG 文档，保持与明细页一致的数据口径。"""
     documents = []
     try:
         district_param = None if is_city_report else region_name
-        rows = db.fetch_weixin_extract_data(limit=limit, district=district_param, days_limit=days_limit)
+        rows = db.fetch_weixin_extract_data(limit=limit, district=district_param, days_limit=days_limit, require_db_region=True)
         rows.sort(key=lambda x: (x.get("score") or 0, x.get("release_time_raw") or ""), reverse=True)
     except Exception as exc:
         db.log_event(None, "regional", "WARNING", f"区域 RAG 文档加载失败: {exc}")
@@ -133,7 +135,7 @@ def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit:
             "title": title,
             "content": content,
             "publish_date": _clean_text(row.get("release_time_raw")),
-            "source": "weixin_deepseek_extract_d",
+            "source": "weixin_deepseek_extract_d_new",
             "link": _clean_text(row.get("link")),
             "company": district,
             "district": district,
@@ -280,7 +282,7 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
 
     db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片，时间限制: {days_limit}天。")
 
-    # 与 /api/articles 明细页保持同一数据口径：均读取 weixin_deepseek_extract_d 大模型挖掘结果。
+    # 与 /api/articles 明细页保持同一数据口径：均读取 weixin_deepseek_extract_d_new 大模型挖掘结果。
     # 上海市报告不传 district，明细页默认按 16 个区折叠展示全部商机。
     summary = db.get_articles_summary(None if is_city_report else region_name, days_limit=days_limit)
     detail_url = f"/ui_1.html?days={days_limit}" if is_city_report else f"/ui_1.html?district={quote(region_name)}&days={days_limit}"
