@@ -671,7 +671,7 @@ def format_release_time(raw_time: str) -> str:
     for time_format in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:
             dt = datetime.strptime(raw_time, time_format)
-            return f"{dt.month}月{dt.day}日"
+            return f"{dt.year}年{dt.month}月{dt.day}日"
         except ValueError:
             continue
     return raw_time
@@ -1273,7 +1273,7 @@ async def _async_batch_llm_judge(rows: list) -> list:
 
 def get_articles(district: str = None, days_limit: int = 30) -> dict:
     """返回前端商机列表所需的数据结构，兼容 /api/articles。"""
-    raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit)
+    raw_articles = fetch_weixin_extract_data(limit=50000, district=district, days_limit=days_limit, require_db_region=True)
     
     groups_dict = {district: {}} if district else {d_name: {} for d_name in DISTRICTS}
     
@@ -1385,6 +1385,18 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         where_clauses.append("a.publish_time >= DATE_SUB(CURDATE(), INTERVAL :days_limit DAY)")
         params["days_limit"] = days_limit
         
+    where_clauses.append("a.EntName IS NOT NULL AND a.EntName != ''")
+    where_clauses.append("(a.EnterpriseNature IS NULL OR a.EnterpriseNature != '非企')")
+    
+    if require_db_region:
+        where_clauses.append("a.region IS NOT NULL AND TRIM(a.region) != ''")
+        if district and district != "上海市":
+            if district == "浦东新区":
+                where_clauses.append("(a.region = :district OR a.region = '临港新片区' OR a.region = '临港')")
+            else:
+                where_clauses.append("a.region = :district")
+            params["district"] = district
+
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
     sql = text(f"""
@@ -1524,7 +1536,7 @@ def get_articles_summary(district: str = None, days_limit: int = 30) -> dict:
         "district_counts": [],
     }
     try:
-        raw_articles = fetch_weixin_extract_data(limit=1000, district=district, days_limit=days_limit, require_db_region=True)
+        raw_articles = fetch_weixin_extract_data(limit=20000, district=district, days_limit=days_limit, require_db_region=True)
     except Exception as e:
         print(f"【Article Summary Error】获取 {district or '上海市'} 商机汇总失败: {e}")
         return empty_summary

@@ -211,8 +211,8 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
     district_param = None if district == "上海市" else district
     days_limit = filters.get("days_limit", 30)
     
-    # We fetch more than limit because we will filter in python
-    raw_data = db.fetch_weixin_extract_data(limit=1000, district=district_param, days_limit=days_limit)
+    # 增加 limit 至 50000 解除底层封印，并复用区域过滤标准
+    raw_data = db.fetch_weixin_extract_data(limit=50000, district=district_param, days_limit=days_limit)
     
     keyword = filters.get("keyword") or ""
     industry = filters.get("industry") or ""

@@ -264,7 +264,7 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
     def extract_days_limit(k: str) -> int:
         if not k:
             return 30
-        if re.search(r'(今年|本年度|这一年)', k):
+        if re.search(r'(今年|本年度|这一年|一年)', k):
             return 365
         if re.search(r'(半年|六个月|6个月)', k):
             return 180
