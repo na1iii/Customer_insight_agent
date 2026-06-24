@@ -24,6 +24,31 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
     if not text:
         return TaskCommand(intent="general_chat", keyword="")
         
+    # 0. 优先匹配数据库中的企业简称/别名/全称 (仅在输入相对简短且不含其他场景明确特征词时，以防误碰)
+    text_lower = text.lower()
+    has_other_intent_words = any(w in text_lower for w in ["区", "行业", "pdf", "html", "报告", "高潜", "名单", "excel", "导出", "趋势", "对比", "分析", "策略", "商机"])
+    if len(text_lower) >= 2 and not has_other_intent_words:
+        try:
+            from utils.alias_helper import alias_helper
+            # 1. 优先完全匹配别名/简称
+            for k, v in alias_helper.alias_to_official.items():
+                if k.lower() == text_lower:
+                    print(f"【Router Quick Hit】完全匹配到简称: {k} -> {v}")
+                    return TaskCommand(intent="query_customer", keyword=v)
+            # 2. 优先完全匹配官方全称
+            for k in alias_helper.official_to_alias.keys():
+                if k.lower() == text_lower:
+                    print(f"【Router Quick Hit】完全匹配到官方全称: {k}")
+                    return TaskCommand(intent="query_customer", keyword=k)
+            # 3. 模糊匹配 (当输入长度小于 15 时才允许，防止长提问被误碰)
+            if len(text_lower) < 15:
+                for k, v in alias_helper.alias_to_official.items():
+                    if k.lower() in text_lower or text_lower in k.lower():
+                        print(f"【Router Quick Hit】模糊匹配到简称: {k} -> {v}")
+                        return TaskCommand(intent="query_customer", keyword=v)
+        except Exception as route_err:
+            print(f"【Router Quick Hit Error】 {route_err}")
+        
     generic_prompts = {
         "我想看一家企业的精准画像": TaskCommand(intent="query_customer", keyword=None),
         "我想生成一份区域经济报告": TaskCommand(intent="regional_report", keyword=None),

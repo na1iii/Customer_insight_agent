@@ -38,14 +38,53 @@ def set_cached_report(keyword: str, content: str):
         }
         print(f"【Cache Set】成功写入企业画像缓存: {keyword}")
 
+def get_company_all_names(keyword: str) -> list:
+    """找出该企业的所有可能别名/简称以及全称列表（用于索引精确匹配查询）"""
+    official = keyword
+    for k, v in alias_helper.alias_to_official.items():
+        if k.lower() == keyword.lower():
+            official = v
+            break
+    if official == keyword:
+        for k, v in alias_helper.alias_to_official.items():
+            if keyword.lower() in k.lower() or k.lower() in keyword.lower():
+                official = v
+                break
+                
+    names = {official, keyword}
+    for k, v in alias_helper.alias_to_official.items():
+        if v == official:
+            names.add(k)
+            
+    expanded = list(names)
+    for name in list(names):
+        # 去除常见后缀以获取最简简称，例如 "稀宇科技" -> "稀宇"
+        clean_name = name
+        for suffix in ["股份有限公司", "有限公司", "股份", "集团", "科技", "智能"]:
+            if clean_name.endswith(suffix) and len(clean_name) > len(suffix):
+                clean_name = clean_name[:-len(suffix)].strip()
+        if clean_name and len(clean_name) > 1:
+            expanded.append(clean_name)
+            
+        # 增加 "上海" 前缀变体
+        if not name.startswith("上海") and len(name) > 1:
+            expanded.append(f"上海{name}")
+        if clean_name and not clean_name.startswith("上海") and len(clean_name) > 1:
+            expanded.append(f"上海{clean_name}")
+            
+    return list(set(expanded))
+
 def find_exact_company(keyword: str) -> str:
     """
     检查 keyword 是否能精确匹配（或通过别名映射精确匹配）到系统中的某家企业名称。
     """
-    # 1. 优先从 alias_helper 查找
-    official_name = alias_helper.alias_to_official.get(keyword)
-    if official_name:
-        return official_name
+    # 1. 优先从 alias_helper 查找 (进行大小写无关的别名与模糊匹配)
+    for k, v in alias_helper.alias_to_official.items():
+        if k.lower() == keyword.lower():
+            return v
+    for k, v in alias_helper.alias_to_official.items():
+        if keyword.lower() in k.lower() or k.lower() in keyword.lower():
+            return v
     
     # 2. 直连数据库查询精确匹配的企业名称或简称
     try:
@@ -191,8 +230,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
     db_hit = False
     db_documents = []
     
-    official_name = alias_helper.alias_to_official.get(keyword, keyword)
-    synonym_name = alias_helper.official_to_alias.get(keyword, keyword)
+    name_list = get_company_all_names(keyword)
     
     try:
         # A. 检索企业资质及营收属性 (ranking_ent_dtl_clue)
@@ -201,8 +239,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
             "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
             "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
-            "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym LIMIT 1",
-            {"official": official_name, "synonym": synonym_name}
+            "FROM ranking_ent_dtl_clue WHERE `企业名称` IN :names LIMIT 1",
+            {"names": name_list}
         )
         if clue_res:
             db_clue_info = clue_res[0]
@@ -210,8 +248,8 @@ def handle(keyword: str, user_id: int = None) -> dict:
         # 新增：从 sgs_cust_snap 中检索工商基础信息
         snap_res = db.query_business_db(
             "SELECT `legal_representative`, `registered_capital`, `business_scope` "
-            "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym LIMIT 1",
-            {"official": official_name, "synonym": synonym_name}
+            "FROM sgs_cust_snap WHERE `business_name` IN :names LIMIT 1",
+            {"names": name_list}
         )
         if snap_res:
             db_snap_info = snap_res[0]
@@ -222,9 +260,9 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
             "`publish_time` AS date, `wechat_name` AS source "
             "FROM weixin_deepseek_extract_d "
-            "WHERE `EntName` = :official OR `EntName` = :synonym OR `EntShortName` = :official OR `EntShortName` = :synonym "
+            "WHERE `EntName` IN :names OR `EntShortName` IN :names "
             "ORDER BY `publish_time` DESC LIMIT 15",
-            {"official": official_name, "synonym": synonym_name}
+            {"names": name_list}
         )
         
         for a in extract_res:
@@ -263,7 +301,9 @@ def handle(keyword: str, user_id: int = None) -> dict:
         retrieved_docs = rag.retrieve(keyword, top_k=3)
         
         if api_key and "your_api_key" not in api_key:
-            retrieved_docs = rag.rerank(keyword, retrieved_docs, api_key, base_url, model_name)
+            # 构建对 Reranker 友好的查询，包含所有的别名和简称，防止大模型判定为不相关
+            rerank_query = f"{keyword} (" + " / ".join(name_list) + ")"
+            retrieved_docs = rag.rerank(rerank_query, retrieved_docs, api_key, base_url, model_name)
         else:
             for doc in retrieved_docs:
                 doc["rerank_score"] = doc.get("final_score", 0.0)
@@ -503,11 +543,9 @@ async def handle_stream(keyword: str, user_id: int = None):
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
     
-    # 再次根据最终确定的 keyword 映射 official 和 synonym 名
-    official_name = alias_helper.alias_to_official.get(keyword, keyword)
-    synonym_name = alias_helper.official_to_alias.get(keyword, keyword)
+    name_list = get_company_all_names(keyword)
     
-    # 2. 从业务数据库中检索企业基础线索、微信文章和项目合作新闻
+    # 2. 从业务数据库中检索企业基础线索、微信文章 and 项目合作新闻
     db_clue_info = None
     db_snap_info = None
     db_articles = []
@@ -524,8 +562,8 @@ async def handle_stream(keyword: str, user_id: int = None):
                 "`2024年营业收入（万元）` AS Scale_revenue, `营业收入增长率` AS Growth_rate, "
                 "`资质名称` AS Awards_list, `客户经理名称` AS Manager, "
                 "`企业注册时间` AS Establish_date, `集团行业一层` AS Industry "
-                "FROM ranking_ent_dtl_clue WHERE `企业名称` = :official OR `企业名称` = :synonym LIMIT 1",
-                {"official": official_name, "synonym": synonym_name}
+                "FROM ranking_ent_dtl_clue WHERE `企业名称` IN :names LIMIT 1",
+                {"names": name_list}
             )
             if clue_res:
                 db_clue_info = clue_res[0]
@@ -533,8 +571,8 @@ async def handle_stream(keyword: str, user_id: int = None):
             # 新增：从 sgs_cust_snap 中检索工商基础信息
             snap_res = db.query_business_db(
                 "SELECT `legal_representative`, `registered_capital`, `business_scope` "
-                "FROM sgs_cust_snap WHERE `business_name` = :official OR `business_name` = :synonym LIMIT 1",
-                {"official": official_name, "synonym": synonym_name}
+                "FROM sgs_cust_snap WHERE `business_name` IN :names LIMIT 1",
+                {"names": name_list}
             )
             if snap_res:
                 db_snap_info = snap_res[0]
@@ -545,9 +583,9 @@ async def handle_stream(keyword: str, user_id: int = None):
                 "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
                 "`publish_time` AS date, `wechat_name` AS source "
                 "FROM weixin_deepseek_extract_d "
-                "WHERE `EntName` = :official OR `EntName` = :synonym OR `EntShortName` = :official OR `EntShortName` = :synonym "
+                "WHERE `EntName` IN :names OR `EntShortName` IN :names "
                 "ORDER BY `publish_time` DESC LIMIT 15",
-                {"official": official_name, "synonym": synonym_name}
+                {"names": name_list}
             )
             
             for a in extract_res:
@@ -591,7 +629,9 @@ async def handle_stream(keyword: str, user_id: int = None):
             rag = RAGEngine(documents=db_documents)
             retrieved_docs = rag.retrieve(keyword, top_k=3)
             if api_key and "your_api_key" not in api_key:
-                retrieved_docs = rag.rerank(keyword, retrieved_docs, api_key, base_url, model_name)
+                # 构建对 Reranker 友好的查询，包含所有的别名和简称，防止大模型判定为不相关
+                rerank_query = f"{keyword} (" + " / ".join(name_list) + ")"
+                retrieved_docs = rag.rerank(rerank_query, retrieved_docs, api_key, base_url, model_name)
             else:
                 for doc in retrieved_docs:
                     doc["rerank_score"] = doc.get("final_score", 0.0)
