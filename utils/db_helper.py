@@ -1315,6 +1315,9 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
                 existing_hit.add(h)
             existing["hit"] = list(existing_hit)
             
+            # Update region_priority (取最高优先级)
+            existing["region_priority"] = max(existing.get("region_priority", 1), row.get("region_priority", 1))
+            
             # If current row has a higher score, update the main display fields
             if score > existing["score"]:
                 existing["score"] = score
@@ -1345,6 +1348,7 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
                 "hit": row.get("hit") or [],
                 "sources": [source_item],
                 "display_tags": row.get("tags") or [],
+                "region_priority": row.get("region_priority", 1),
             }
         
     groups = []
@@ -1353,7 +1357,7 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
         articles = list(articles_map.values())
         if group_name == "其他" and not articles:
             continue
-        articles.sort(key=lambda article: (article["score"], article["release_time_raw"]), reverse=True)
+        articles.sort(key=lambda article: (article["score"], article.get("region_priority", 1), article["release_time_raw"]), reverse=True)
         groups.append({"name": group_name, "count": len(articles), "articles": articles})
         total_count += len(articles)
 
@@ -1367,6 +1371,61 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
     return {"date": get_today_display(), "total_count": total_count, "group_count": len(groups), "groups": groups}
 
 _WEIXIN_EXTRACT_CACHE = {}
+_d4_tier_cache = None
+
+def get_d4_tier_dict():
+    global _d4_tier_cache
+    if _d4_tier_cache is not None:
+        return _d4_tier_cache
+    
+    _d4_tier_cache = {}
+    try:
+        sql = text("SELECT `企业名称`, `企业简称`, `资质名称` FROM ranking_ent_dtl_clue_new")
+        rows = query_business_db(str(sql), {})
+        
+        TIER1_KW = [
+            '胡润中国人工智能企业50强', '上海软件和信息技术服务业100强', '上海民营企业100强',
+            '上海民营制造业企业100强', '上海企业100强', '中国民营企业500强', '全国互联网100强',
+            '国家级企业技术中心', '跨国公司地区总部和研发中心', '市级企业技术中心',
+            '上海服务业企业100强', '上海民营服务业企业100强',
+        ]
+        TIER2_KW = [
+            '制造业单项冠军', '四上企业', '独角兽', '科技小巨人企业',
+            '上海软件和信息技术服务业高成长100家', '上海制造业企业100强', '上海新兴产业企业100强',
+            '上海成长企业100强', '上海市外商投资企业100强', '生成式人工智能服务备案',
+            '上海100强成长企业50强', '专精特新小巨人',
+        ]
+        TIER3_KW = [
+            '上海市先进级智能工厂', '上海市数字出海服务平台', '张江国家自主创新示范区',
+            '国家级奖项资助', '国家技术创新示范企业', '科技企业孵化器', '科技小巨人培育企业',
+            '区级企业技术中心', '软件和信息服务产业基地', '智能机器人标杆企业',
+            '十大绿色低碳技术产品', '数字化改造服务商', '数字化改造综合服务商',
+            '数字化诊断服务商', '中小企业数字化赋能项目',
+        ]
+        
+        def classify_tier(zz):
+            zz = str(zz)
+            for kw in TIER1_KW:
+                if kw in zz: return 1
+            for kw in TIER2_KW:
+                if kw in zz: return 2
+            for kw in TIER3_KW:
+                if kw in zz: return 3
+            return 4
+
+        for row in rows:
+            name = (row.get("企业名称") or "").strip()
+            short = (row.get("企业简称") or "").strip()
+            zz = (row.get("资质名称") or "").strip()
+            if not zz: continue
+            
+            tier = classify_tier(zz)
+            if name: _d4_tier_cache[name] = min(_d4_tier_cache.get(name, 999), tier)
+            if short: _d4_tier_cache[short] = min(_d4_tier_cache.get(short, 999), tier)
+    except Exception as e:
+        print(f"Failed to load ranking_ent_dtl_clue_new for D4 mapping: {e}")
+        
+    return _d4_tier_cache
 
 def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limit: int = 30, require_db_region: bool = False) -> list:
     """直接查询 weixin_deepseek_extract_d 表并按规则进行打分和过滤（附带5分钟内存缓存）。"""
@@ -1444,8 +1503,8 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         if district and district != "上海市" and district != region:
             continue
 
-        # 动态打分
-        score = 10
+        # 动态打分重构：D1 + D2 + D3 + D4
+        score = 0
         hit = []
         tags_original = [] # 收集原始标签
         
@@ -1454,6 +1513,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         tag_rz = (row.get("Tag_RZ") or "").strip()
         tag_sg = (row.get("Tag_SG") or "").strip()
         capital_nature = (row.get("CapitalNature") or "").strip()
+        other_nature = (row.get("OtherNature") or "").strip()
         news_tag = (row.get("NewsTag") or "").strip()
         
         # 记录原始标签 (保留原有逻辑，只要存在就放进原始标签列表)
@@ -1463,47 +1523,81 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         if tag_sg: tags_original.append(tag_sg)
         if capital_nature: tags_original.append(capital_nature)
         
-        # NewsTag 打分
+        # D1: 领导活动
+        d1_score = 0
         if "国家级领导人调研" in news_tag or "国家领导人调研" in news_tag:
-            score += 20
+            d1_score = 30
             hit.append("领导调研(国家级)")
         elif "市级领导人调研" in news_tag:
-            score += 15
+            d1_score = 21
             hit.append("领导调研(市级)")
         elif "区级领导人调研" in news_tag:
-            score += 10
+            d1_score = 15
             hit.append("领导调研(区级)")
-            
-        if "签约" in news_tag:
-            score += 15
+        elif "签约" in news_tag:
+            d1_score = 10
             hit.append("签约")
-            
-        if "开会" in news_tag:
-            score += 10
+        elif "开会" in news_tag:
+            d1_score = 5
             hit.append("开会")
             
-        # 资本融资标签 (不可叠加)
-        if tag_ss == "是" or tag_ipo == "是" or tag_rz or tag_sg or capital_nature:
-            score += 15
+        # D2: 资本事件
+        d2_score = 0
+        if tag_rz == "被融资方" or tag_sg == "被收购方" or tag_ss == "是" or tag_ipo == "是":
+            d2_score = 25
             hit.append("资本融资")
             
-        # 文本匹配加分
-        text_all = title + " " + abstract
-        for rule_name, points, keywords in SCORING_RULES:
-            if has_any(text_all, keywords):
-                if rule_name not in hit:
-                    score += points
-                    hit.append(rule_name)
-                    
-        # 性质加分
-        other_nature = (row.get("OtherNature") or "").strip()
-        if other_nature and not has_any(other_nature, ["非企", "无"]):
-            score += 5
-            if "其他企业资质" not in hit:
-                hit.append("其他企业资质")
-
+        # D3: 企业设立
+        d3_cn_score = 0
+        if capital_nature in ["新企成立", "子公司成立", "分支机构成立"]:
+            d3_cn_score = 14
+        elif capital_nature == "新基金设立":
+            d3_cn_score = 8
+            
+        d3_on_score = 0
+        if other_nature in ["项目建设", "厂房开办"]:
+            d3_on_score = 20
+            
+        d3_score = max(d3_cn_score, d3_on_score)
+        if d3_score > 0:
+            hit.append("企业设立")
+            
+        # D4: 榜单资质
+        d4_score = 0
+        tier_dict = get_d4_tier_dict()
+        tier = None
+        
+        # 先尝试全称匹配，不行再简称匹配
+        ent_short_name = (row.get("EntShortName") or "").strip()
+        if ent_name and ent_name in tier_dict:
+            tier = tier_dict[ent_name]
+        elif ent_short_name and ent_short_name in tier_dict:
+            tier = tier_dict[ent_short_name]
+            
+        if tier is not None:
+            tier_scores = {1: 25, 2: 15, 3: 8, 4: 3}
+            d4_score = tier_scores.get(tier, 0)
+            hit.append(f"榜单资质(Tier{tier})")
+            
+        score = d1_score + d2_score + d3_score + d4_score
+        
+        # 如果 score < 10 (即D级)，直接过滤
+        if score < 10:
+            continue
+            
         score = min(score, 100)
-        score_label = "HOT" if score >= 85 else "关注"
+        score_label = "HOT" if score >= 50 else "关注"
+        
+        # 判断 region 判断依据的优先级：
+        # 3: 公众号来源映射, 2: 企业名称映射, 1: AI语义推断/其他
+        region_priority = 1
+        wechat_name = (row.get("wechat_name") or "").strip()
+        district_short = region.replace("新区", "").replace("区", "") if region else ""
+        
+        if region and (region in wechat_name or (district_short and district_short in wechat_name)):
+            region_priority = 3
+        elif region and (region in ent_name or (district_short and district_short in ent_name)):
+            region_priority = 2
             
         results.append({
             "ent_name": ent_name,
@@ -1518,7 +1612,8 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
             "score_label": score_label,
             "hit": hit,
             "tags": tags_original,
-            "wechat_name": (row.get("wechat_name") or "").strip(),
+            "wechat_name": wechat_name,
+            "region_priority": region_priority,
             "raw_row": row
         })
         

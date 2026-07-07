@@ -142,6 +142,7 @@ def _fetch_regional_rag_documents(region_name: str, is_city_report: bool, limit:
             "industry": _clean_text(row.get("industry")),
             "doc_type": "regional_opportunity",
             "entity_name": full_ent_name,
+            "wechat_name": _clean_text(row.get("wechat_name")),
         })
     return documents
 
@@ -196,6 +197,26 @@ def _render_regional_rag_summary(region_name: str, summary: dict, evidence: list
         link = doc.get("link")
         
         if title:
+            # 过滤：避免明显带有其他区字眼的文章出现在区域线索中，并强制限定本区公众号
+            if not is_city_report:
+                short_region = region_name.replace("新区", "").replace("区", "")
+                wechat_name = doc.get("wechat_name") or ""
+                
+                # 强制限定：必须是带本区短名称的公众号！避免“张通社”等第三方公众号的无关文章乱入
+                if short_region and short_region not in wechat_name:
+                    continue
+                    
+                has_other_district = False
+                for d in DISTRICTS:
+                    if d == region_name:
+                        continue
+                    short_d = d.replace("新区", "").replace("区", "")
+                    if d in title or (short_d and short_d in title):
+                        has_other_district = True
+                        break
+                if has_other_district:
+                    continue
+
             if title not in title_links_map and len(title_links_map) < 3:
                 title_links_map[title] = link
                 
