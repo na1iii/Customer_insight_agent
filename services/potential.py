@@ -592,7 +592,7 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
         item["rag_score"] = 0.0
         item["rag_evidence"] = []
         item["score"] = regional_score
-        item["level"] = "HOT" if regional_score >= 60 else "关注"
+        item["level"] = "HOT" if regional_score >= 50 else "关注"
         return item
 
     score = float(rag_info.get("best_score") or 0.0)
@@ -601,7 +601,7 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
     item["rag_evidence"] = evidence
     
     item["score"] = regional_score
-    item["level"] = "HOT" if regional_score >= 60 else "关注"
+    item["level"] = "HOT" if regional_score >= 50 else "关注"
     
     if evidence:
         signals = item.setdefault("signals", [])
@@ -615,7 +615,7 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
 def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score_parts: Dict[str, int]) -> Dict[str, Any]:
     region = _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(row.get("province"))
     industry = _clean_text(row.get("industry")) or "未标注"
-    level = "HOT" if score >= 60 else "关注"
+    level = "HOT" if score >= 50 else "关注"
     return {
         "name": _clean_text(row.get("name")),
         "short_name": _clean_text(row.get("short_name")),
@@ -658,7 +658,7 @@ def _fallback_from_mock(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
             "name": client.get("name"),
             "short_name": "",
             "score": score,
-            "level": "HOT" if score >= 60 else "关注",
+            "level": "HOT" if score >= 50 else "关注",
             "industry": client.get("industry"),
             "region": filters.get("district") or "未标注",
             "signals": ["Mock兜底", "优质线索"],

@@ -1163,6 +1163,12 @@
             color: var(--text-primary);
             font-size: 14px;
             padding: 10px 14px;
+            resize: none;
+            overflow-y: auto;
+            max-height: 150px;
+            font-family: inherit;
+            line-height: 1.5;
+            height: 41px;
         }
 
         .chat-input::placeholder { color: #555e6b; }
@@ -1796,7 +1802,7 @@
             <!-- 对话底栏 -->
             <footer class="input-area" id="inputArea">
                 <div class="input-wrapper">
-                    <input type="text" class="chat-input" id="chatInput" placeholder="向 客户智能洞察助理 提问..." onkeydown="handleChatKeydown(event)" />
+                    <textarea class="chat-input" id="chatInput" placeholder="向 客户智能洞察助理 提问..." onkeydown="handleChatKeydown(event)" oninput="this.style.height='auto'; this.style.height = this.scrollHeight + 'px'" rows="1"></textarea>
                     <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display: none;" title="停止生成">
                         <svg viewBox="0 0 24 24">
                             <path d="M6,19H10V5H6V19M14,5V19H18V5H14Z"/>
@@ -2174,6 +2180,7 @@
             }
 
             inputEl.value = '';
+            inputEl.style.height = '41px';
             updateUIState(true);
             appendUserBubble(text);
             scrollToBottom();
