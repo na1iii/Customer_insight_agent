@@ -272,6 +272,7 @@
         .score-label { font-size: 9px; margin-top: 4px; letter-spacing: 0.08em; font-weight: 800; position: relative; z-index: 1; }
         .score-blue { background: linear-gradient(145deg, #2563eb, #7c3aed); }
         .score-red { background: linear-gradient(145deg, #ef4444, #f97316); }
+        .score-orange { background: linear-gradient(145deg, #f97316, #ea580c); }
         .score-gray { background: linear-gradient(145deg, #64748b, #94a3b8); }
 
         .news-content { flex-grow: 1; min-width: 0; }
@@ -506,15 +507,12 @@
         <div class="logic-section">
             <div class="section-title">📐 入选逻辑 & 评分维度 <span class="section-badge">满分100分</span></div>
             <div class="rules-grid">
-                <div class="rule-item"><div class="rule-icon">⭐</div><div class="rule-content"><span class="rule-name">基础分</span> <span class="rule-score">10</span><div class="rule-desc">商机入选基础底分</div></div></div>
-                <div class="rule-item"><div class="rule-icon">👔</div><div class="rule-content"><span class="rule-name">领导调研</span> <span class="rule-score">20/15/10</span><div class="rule-desc">国家/市/区级领导调研</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🤝</div><div class="rule-content"><span class="rule-name">签约</span> <span class="rule-score">15</span><div class="rule-desc">相关签约动态</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🎤</div><div class="rule-content"><span class="rule-name">开会</span> <span class="rule-score">10</span><div class="rule-desc">相关开会动态</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🏗️</div><div class="rule-content"><span class="rule-name">投资落地</span> <span class="rule-score">15</span><div class="rule-desc">文本命中投资落地词汇</div></div></div>
-                <div class="rule-item"><div class="rule-icon">💰</div><div class="rule-content"><span class="rule-name">资本融资</span> <span class="rule-score">15</span><div class="rule-desc">标签命中上市/IPO/融资/收购等</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🚀</div><div class="rule-content"><span class="rule-name">技术突破</span> <span class="rule-score">5</span><div class="rule-desc">文本命中研发突破等词汇</div></div></div>
-                <div class="rule-item"><div class="rule-icon">📊</div><div class="rule-content"><span class="rule-name">具化数据</span> <span class="rule-score">5</span><div class="rule-desc">文本命中金额规模等数据</div></div></div>
-                <div class="rule-item"><div class="rule-icon">🏆</div><div class="rule-content"><span class="rule-name">企业性质</span> <span class="rule-score">5</span><div class="rule-desc">其他非空企业性质标签</div></div></div>
+                <div class="rule-item"><div class="rule-icon">👔</div><div class="rule-content"><span class="rule-name">领导调研</span> <span class="rule-score">30/21/15</span><div class="rule-desc">国家/市/区级领导调研</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🤝</div><div class="rule-content"><span class="rule-name">签约与会议</span> <span class="rule-score">10/5</span><div class="rule-desc">相关签约或开会动态</div></div></div>
+                <div class="rule-item"><div class="rule-icon">💰</div><div class="rule-content"><span class="rule-name">资本融资</span> <span class="rule-score">25</span><div class="rule-desc">上市/IPO/融资/收购等</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🏗️</div><div class="rule-content"><span class="rule-name">企业设立</span> <span class="rule-score">20/14/8</span><div class="rule-desc">项目建设/新企/基金设立等</div></div></div>
+                <div class="rule-item"><div class="rule-icon">🏆</div><div class="rule-content"><span class="rule-name">榜单资质</span> <span class="rule-score">25/15/8/3</span><div class="rule-desc">1~4级企业资质动态附加分</div></div></div>
+                <div class="rule-item"><div class="rule-icon">⭐</div><div class="rule-content"><span class="rule-name">商机评级</span> <span class="rule-score">S级标红</span><div class="rule-desc">≥50分为HOT，低于10分过滤</div></div></div>
             </div>
             <div class="filter-note">
                 <span class="filter-icon">🗑️</span>
@@ -594,8 +592,16 @@
                 `;
             }).join('');
 
+            const getTagIcon = (tag) => {
+                if (tag.includes("领导调研") || tag.includes("签约") || tag.includes("开会")) return "👔";
+                if (tag.includes("资本融资") || tag.includes("上市") || tag.includes("IPO") || tag.includes("融资") || tag.includes("收购")) return "💰";
+                if (tag.includes("企业设立") || tag.includes("成立") || tag.includes("设立") || tag.includes("建设") || tag.includes("开办")) return "🏢";
+                if (tag.includes("榜单资质") || tag.includes("专精特新") || tag.includes("技术中心") || tag.includes("百强") || tag.includes("50强") || tag.includes("小巨人") || tag.includes("单项冠军") || tag.includes("独角兽") || tag.includes("中小企业") || tag.includes("高新技术") || tag.includes("示范") || tag.includes("标杆") || tag.includes("奖项") || tag.includes("数字") || tag.includes("备案") || tag.includes("立项") || tag.includes("基地") || tag.includes("总部") || tag.includes("低碳")) return "🏆";
+                return "🎯";
+            };
+
             const hitTagsHtml = (article.hit || [])
-                .map(tag => `<span class="meta-pill" style="background:#fef2f2; color:#ef4444; border-color:#fecaca;">🎯 ${escapeHtml(tag)}</span>`)
+                .map(tag => `<span class="meta-pill" style="background:#fef2f2; color:#ef4444; border-color:#fecaca;">${getTagIcon(tag)} ${escapeHtml(tag)}</span>`)
                 .join('');
             const origTagsHtml = (article.display_tags || [])
                 .map(tag => `<span class="meta-pill">🏷️ ${escapeHtml(tag)}</span>`)
