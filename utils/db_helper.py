@@ -1305,15 +1305,19 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
             existing["sources"].append(source_item)
             
             # Merge tags and hit
-            existing_tags = set(existing.get("display_tags", []))
+            existing_tags = []
+            for tag in existing.get("display_tags", []):
+                if tag not in existing_tags: existing_tags.append(tag)
             for tag in (row.get("tags") or []):
-                existing_tags.add(tag)
-            existing["display_tags"] = list(existing_tags)
+                if tag not in existing_tags: existing_tags.append(tag)
+            existing["display_tags"] = existing_tags
             
-            existing_hit = set(existing.get("hit", []))
+            existing_hit = []
+            for h in existing.get("hit", []):
+                if h not in existing_hit: existing_hit.append(h)
             for h in (row.get("hit") or []):
-                existing_hit.add(h)
-            existing["hit"] = list(existing_hit)
+                if h not in existing_hit: existing_hit.append(h)
+            existing["hit"] = existing_hit
             
             # Update region_priority (取最高优先级)
             existing["region_priority"] = max(existing.get("region_priority", 1), row.get("region_priority", 1))
@@ -1322,7 +1326,7 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
             if score > existing["score"]:
                 existing["score"] = score
                 existing["score_label"] = score_label
-                existing["score_class"] = "score-red" if score >= 85 else "score-blue"
+                existing["score_class"] = "score-orange" if score_label == "HOT" else "score-blue"
                 existing["title"] = row.get("title") or ""
                 existing["abstract"] = row.get("abstract") or ""
                 existing["release_time"] = format_release_time(release_time_raw)
@@ -1339,7 +1343,7 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
                 "release_time_raw": release_time_raw,
                 "score": score,
                 "score_label": score_label,
-                "score_class": "score-red" if score >= 85 else "score-blue",
+                "score_class": "score-orange" if score_label == "HOT" else "score-blue",
                 "source_name": row.get("wechat_name") or "微信数据",
                 "link": row.get("link") or "",
                 "industry": row.get("industry") or "",
@@ -1380,48 +1384,53 @@ def get_d4_tier_dict():
     
     _d4_tier_cache = {}
     try:
-        sql = text("SELECT `企业名称`, `企业简称`, `资质名称` FROM ranking_ent_dtl_clue_new")
+        sql = text("SELECT `企业名称`, `企业简称`, `资质名称`, `榜单废弃`, `到期时间` FROM ranking_ent_dtl_clue_new")
         rows = query_business_db(str(sql), {})
         
-        TIER1_KW = [
-            '胡润中国人工智能企业50强', '上海软件和信息技术服务业100强', '上海民营企业100强',
-            '上海民营制造业企业100强', '上海企业100强', '中国民营企业500强', '全国互联网100强',
-            '国家级企业技术中心', '跨国公司地区总部和研发中心', '市级企业技术中心',
-            '上海服务业企业100强', '上海民营服务业企业100强',
-        ]
-        TIER2_KW = [
-            '制造业单项冠军', '四上企业', '独角兽', '科技小巨人企业',
-            '上海软件和信息技术服务业高成长100家', '上海制造业企业100强', '上海新兴产业企业100强',
-            '上海成长企业100强', '上海市外商投资企业100强', '生成式人工智能服务备案',
-            '上海100强成长企业50强', '专精特新小巨人',
-        ]
-        TIER3_KW = [
-            '上海市先进级智能工厂', '上海市数字出海服务平台', '张江国家自主创新示范区',
-            '国家级奖项资助', '国家技术创新示范企业', '科技企业孵化器', '科技小巨人培育企业',
-            '区级企业技术中心', '软件和信息服务产业基地', '智能机器人标杆企业',
-            '十大绿色低碳技术产品', '数字化改造服务商', '数字化改造综合服务商',
-            '数字化诊断服务商', '中小企业数字化赋能项目',
-        ]
-        
+        TIER_MAP = {'胡润中国人工智能企业50强': 1, '上海软件和信息技术服务业100强': 1, '上海民营企业100强': 1, '上海民营制造业企业100强': 1, '上海企业100强': 1, '中国民营企业500强': 1, '全国互联网100强': 1, '国家级企业技术中心': 1, '跨国公司地区总部和研发中心': 1, '市级企业技术中心': 1, '上海服务业企业100强': 1, '上海民营服务业企业100强': 1, '制造业单项冠军企业': 2, '“四上企业”': 2, '独角兽': 2, '科技小巨人企业': 2, '上海软件和信息技术服务业高成长100家': 2, '上海制造业企业100强': 2, '上海新兴产业企业100强': 2, '上海成长企业100强': 2, '上海市外商投资企业100强': 2, '生成式人工智能服务备案': 2, '上海100强成长企业50强': 2, '上海市先进级智能工厂': 3, '上海市数字出海服务平台': 3, '张江国家自主创新示范区专项发展资金拟支持项目': 3, '国家级奖项资助': 3, '国家技术创新示范企业': 3, '科技企业孵化器': 3, '科技小巨人培育企业': 3, '区级企业技术中心': 3, '软件和信息服务产业基地': 3, '上海市智能机器人标杆企业与应用场景推荐目录': 3, '十大绿色低碳技术产品': 3, '数字化改造服务商': 3, '数字化改造综合服务商': 3, '数字化诊断服务商': 3, '中小企业数字化赋能项目（数字化服务商）名单': 3, '专精特新“小巨人”': 3, '创新型中小企业': 4, '科技型中小企业': 4, '高新技术企业': 4, '科技型中小企业技术创新资金立项结果': 4, '专精特新': 4}
+
         def classify_tier(zz):
-            zz = str(zz)
-            for kw in TIER1_KW:
-                if kw in zz: return 1
-            for kw in TIER2_KW:
-                if kw in zz: return 2
-            for kw in TIER3_KW:
-                if kw in zz: return 3
+            zz = str(zz).strip()
+            if zz in TIER_MAP:
+                return TIER_MAP[zz]
+            for k, v in TIER_MAP.items():
+                if k in zz: return v
             return 4
 
+        def update_cache(k, t, z):
+            if k not in _d4_tier_cache:
+                _d4_tier_cache[k] = {"tier": t, "quals": [(t, z)]}
+            else:
+                if t < _d4_tier_cache[k]["tier"]:
+                    _d4_tier_cache[k]["tier"] = t
+                if not any(q[1] == z for q in _d4_tier_cache[k]["quals"]):
+                    _d4_tier_cache[k]["quals"].append((t, z))
+                    
+        now = datetime.now()
         for row in rows:
             name = (row.get("企业名称") or "").strip()
             short = (row.get("企业简称") or "").strip()
             zz = (row.get("资质名称") or "").strip()
-            if not zz: continue
+            discarded = (row.get("榜单废弃") or "").strip()
+            expire_str = (row.get("到期时间") or "").strip()
             
-            tier = classify_tier(zz)
-            if name: _d4_tier_cache[name] = min(_d4_tier_cache.get(name, 999), tier)
-            if short: _d4_tier_cache[short] = min(_d4_tier_cache.get(short, 999), tier)
+            if not zz or discarded == "废弃":
+                continue
+                
+            if expire_str:
+                try:
+                    expire_date = datetime.strptime(expire_str, "%Y/%m/%d")
+                    if expire_date < now: continue
+                except ValueError:
+                    try:
+                        expire_date = datetime.strptime(expire_str, "%Y-%m-%d")
+                        if expire_date < now: continue
+                    except ValueError:
+                        pass
+            
+            t = classify_tier(zz)
+            if name: update_cache(name, t, zz)
+            if short: update_cache(short, t, zz)
     except Exception as e:
         print(f"Failed to load ranking_ent_dtl_clue_new for D4 mapping: {e}")
         
@@ -1516,13 +1525,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
         other_nature = (row.get("OtherNature") or "").strip()
         news_tag = (row.get("NewsTag") or "").strip()
         
-        # 记录原始标签 (保留原有逻辑，只要存在就放进原始标签列表)
-        if tag_ss == "是": tags_original.append("上市")
-        if tag_ipo == "是": tags_original.append("IPO")
-        if tag_rz: tags_original.append(tag_rz)
-        if tag_sg: tags_original.append(tag_sg)
-        if capital_nature: tags_original.append(capital_nature)
-        
+        # 收集原始标签，如果是加分的，放入hit；如果不加分，放回tags_original
         # D1: 领导活动
         d1_score = 0
         if "国家级领导人调研" in news_tag or "国家领导人调研" in news_tag:
@@ -1543,41 +1546,70 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
             
         # D2: 资本事件
         d2_score = 0
+        hit_d2 = False
         if tag_rz == "被融资方" or tag_sg == "被收购方" or tag_ss == "是" or tag_ipo == "是":
             d2_score = 25
             hit.append("资本融资")
+            hit_d2 = True
+            
+        if hit_d2:
+            if tag_ss == "是": hit.append("上市")
+            if tag_ipo == "是": hit.append("IPO")
+            if tag_rz: hit.append(tag_rz)
+            if tag_sg: hit.append(tag_sg)
+        else:
+            if tag_ss == "是": tags_original.append("上市")
+            if tag_ipo == "是": tags_original.append("IPO")
+            if tag_rz: tags_original.append(tag_rz)
+            if tag_sg: tags_original.append(tag_sg)
             
         # D3: 企业设立
         d3_cn_score = 0
+        hit_d3_cn = False
         if capital_nature in ["新企成立", "子公司成立", "分支机构成立"]:
             d3_cn_score = 14
+            hit_d3_cn = True
         elif capital_nature == "新基金设立":
             d3_cn_score = 8
+            hit_d3_cn = True
             
         d3_on_score = 0
+        hit_d3_on = False
         if other_nature in ["项目建设", "厂房开办"]:
             d3_on_score = 20
+            hit_d3_on = True
             
         d3_score = max(d3_cn_score, d3_on_score)
         if d3_score > 0:
             hit.append("企业设立")
+            if hit_d3_cn and capital_nature: hit.append(capital_nature)
+            if hit_d3_on and other_nature: hit.append(other_nature)
+            
+        if not hit_d3_cn and capital_nature:
+            tags_original.append(capital_nature)
             
         # D4: 榜单资质
         d4_score = 0
         tier_dict = get_d4_tier_dict()
-        tier = None
+        tier_info = None
         
         # 先尝试全称匹配，不行再简称匹配
         ent_short_name = (row.get("EntShortName") or "").strip()
         if ent_name and ent_name in tier_dict:
-            tier = tier_dict[ent_name]
+            tier_info = tier_dict[ent_name]
         elif ent_short_name and ent_short_name in tier_dict:
-            tier = tier_dict[ent_short_name]
+            tier_info = tier_dict[ent_short_name]
             
-        if tier is not None:
+        if tier_info is not None:
+            tier = tier_info["tier"]
+            sorted_quals = sorted(tier_info["quals"], key=lambda x: x[0])
+            quals = [q[1] for q in sorted_quals][:2]  # 最多取两个具体资质名称，按层级排序
+            
             tier_scores = {1: 25, 2: 15, 3: 8, 4: 3}
             d4_score = tier_scores.get(tier, 0)
-            hit.append(f"榜单资质(Tier{tier})")
+            hit.append("榜单资质")
+            for q in quals:
+                hit.append(q)
             
         score = d1_score + d2_score + d3_score + d4_score
         
