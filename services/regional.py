@@ -281,25 +281,8 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
             "content": "请问您需要生成哪个区的区域经济报告？（例如：浦东新区、静安区、黄浦区等，或者上海市）"
         }
 
-    import re
-    def extract_days_limit(k: str) -> int:
-        if not k:
-            return 30
-        if re.search(r'(今年|本年度|这一年|一年)', k):
-            return 365
-        if re.search(r'(半年|六个月|6个月)', k):
-            return 180
-        if re.search(r'(三个月|3个月)', k):
-            return 90
-        if re.search(r'(两个月|2个月)', k):
-            return 60
-        if re.search(r'(一周|一星期|7天|七天)', k):
-            return 7
-        if re.search(r'(全部|所有时间|不限时间)', k):
-            return 3650
-        return 30
-
-    days_limit = extract_days_limit(raw_text if raw_text else keyword)
+    from utils.time_parser import extract_days_limit_smart
+    days_limit = extract_days_limit_smart(raw_text if raw_text else keyword)
 
     db.log_event(user_id, "regional", "INFO", f"开始生成 {region_name} 区域商机分析卡片，时间限制: {days_limit}天。")
 

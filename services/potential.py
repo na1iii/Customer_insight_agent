@@ -111,26 +111,11 @@ def _parse_percent(value: Any) -> float:
     return float(match.group()) if match else 0.0
 
 
-def extract_days_limit(k: str) -> int:
-    import re
-    if re.search(r'(今年|本年)', k):
-        now = datetime.now()
-        return (now - datetime(now.year, 1, 1)).days or 1
-    if re.search(r'(半年|6个月|六个月)', k):
-        return 180
-    if re.search(r'(一个季度|1个季度|三个月|3个月)', k):
-        return 90
-    if re.search(r'(一个月|1个月|30天)', k):
-        return 30
-    if re.search(r'(一周|一星期|7天|七天)', k):
-        return 7
-    if re.search(r'(全部|所有时间|不限时间)', k):
-        return 3650
-    return 30
+from utils.time_parser import extract_days_limit_smart
 
 def extract_limit(k: str) -> Optional[int]:
     import re
-    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)', k)
+    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)(?![月星季])', k)
     if match:
         num_str = match.group(1)
         if num_str.isdigit():
@@ -174,14 +159,21 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, ra
             industry = "人工智能" if ind == "AI" else ind
             break
 
-    days_limit = extract_days_limit(text_value)
+    days_limit = extract_days_limit_smart(text_value)
     limit = extract_limit(text_value)
 
     cleaned = text_value
-    # 移除包含数量的表达方式
+    # 移除包含数量的表达方式 (排除带月、星、季的，防止误伤'近一个星期'等)
     import re
-    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)', ' ', cleaned)
+    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)(?![月星季])', ' ', cleaned)
     
+    # 移除常见时间词汇，防止其作为关键词干扰模糊查询
+    # 1. 匹配带数字的时间，如 "近一个月", "30天", "一年"
+    cleaned = re.sub(r'(?:近|过去|前|这几)?(\d+|[一二两三四五六七八九十百千万几]+)个?(月|周|星期|天|季度|年)内?', ' ', cleaned)
+    # 2. 匹配不带数字的常用相对时间
+    cleaned = re.sub(r'(今年|本年|本年度|这一年|半年|全部时间|所有时间|不限时间|全部)', ' ', cleaned)
+    cleaned = re.sub(r'(近|过去|这几|上个|上|本)(月|周|星期|天|季度|年)内?', ' ', cleaned)
+
     for word in NOISE_WORDS:
         cleaned = cleaned.replace(word, " ")
     if district:
