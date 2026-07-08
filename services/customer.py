@@ -38,6 +38,58 @@ def set_cached_report(keyword: str, content: str):
         }
         print(f"【Cache Set】成功写入企业画像缓存: {keyword}")
 
+def calculate_subject_score(title: str, abstract: str, names: list) -> int:
+    """
+    根据标题和摘要的内容与结构特征，打分判断被检索企业是否为文章中的“动作主体”或“关键合作方”。
+    """
+    title = title or ""
+    abstract = abstract or ""
+    score = 0
+    
+    # 1. 检查标题是否包含企业名称/别名（极大增加主体地位概率）
+    for name in names:
+        if name in title:
+            score += 10
+            break
+            
+    # 2. 检查摘要中企业是否处于动作/主语位置
+    for name in names:
+        if name in abstract:
+            idx = abstract.find(name)
+            # 如果在摘要开头部分，大概率是主要实体
+            if idx <= 25:
+                score += 5
+            else:
+                score += 2
+                
+            # 获取名字后面的文字片段进行语义分析
+            post_text = abstract[idx + len(name):idx + len(name) + 15]
+            
+            # 主动或重要动作词/介词
+            active_words = ["与", "和", "在", "宣布", "表示", "签署", "达成", "合作", "投资", "申报", "获批", "推出", "研发", "计划", "启动", "拟", "将", "已", "发布", "正式", "进行"]
+            is_active = False
+            for word in active_words:
+                if post_text.startswith(word) or (len(post_text) > 0 and post_text[0] in ["与", "和"]):
+                    is_active = True
+                    break
+                    
+            # 被动或仅作为修饰限定语（非动作主体）
+            passive_words = ["提供的", "开发的", "拥有的", "授权的", "技术", "平台"]
+            is_passive = False
+            for word in passive_words:
+                if word in post_text[:6]:
+                    is_passive = True
+                    break
+                    
+            if is_active and not is_passive:
+                score += 3
+            elif is_passive:
+                score -= 2
+            break
+            
+    return score
+
+
 def get_company_all_names(keyword: str) -> list:
     """找出该企业的所有可能别名/简称以及全称列表（用于索引精确匹配查询）"""
     official = keyword
@@ -179,6 +231,7 @@ def handle(keyword: str, user_id: int = None) -> dict:
             "content": "请问您想分析哪家企业？（例如：上海电信、上海移动等）"
         }
 
+    original_keyword = keyword
     # 1. 尝试精确匹配企业名称
     exact_name = find_exact_company(keyword)
     if exact_name:
@@ -225,12 +278,11 @@ def handle(keyword: str, user_id: int = None) -> dict:
     # 从业务数据库中检索企业基础线索、微信文章和项目合作新闻
     db_clue_info = None
     db_snap_info = None
-    db_articles = []
-    db_cooperations = []
+    extract_res = []
     db_hit = False
-    db_documents = []
     
-    name_list = get_company_all_names(keyword)
+    name_list = list(set(get_company_all_names(keyword) + get_company_all_names(original_keyword)))
+    concise_keyword = min([n for n in name_list if len(n) >= 2], key=len) if name_list else keyword
     
     try:
         # A. 检索企业资质及营收属性 (ranking_ent_dtl_clue)
@@ -254,65 +306,36 @@ def handle(keyword: str, user_id: int = None) -> dict:
         if snap_res:
             db_snap_info = snap_res[0]
             
-        # B. 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
+        # B. 检索微信公众号动态与项目合作签约动态
         extract_res = db.query_business_db(
             "SELECT `EntName`, `Abstract`, `Topic`, "
             "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
             "`publish_time` AS date, `wechat_name` AS source "
             "FROM weixin_deepseek_extract_d "
             "WHERE `EntName` IN :names OR `EntShortName` IN :names "
-            "ORDER BY `publish_time` DESC LIMIT 15",
+            "ORDER BY `publish_time` DESC LIMIT 25",
             {"names": name_list}
         )
-        
-        for a in extract_res:
-            db_documents.append({
-                "title": a.get("title") or a.get("Topic") or "微信舆情/新闻",
-                "content": a.get("content") or a.get("Abstract") or "",
-                "publish_date": str(a.get("date") or ""),
-                "source": a.get("source") or "微信舆情数据",
-                "link": a.get("link") or "",
-                "company": keyword
-            })
             
-        for a in extract_res:
-            ent = a.get("EntName", "")
-            abst = (a.get("Abstract") or "")[:200]
-            topic = a.get("Topic", "")
-            title = a.get("title", "")
-            content = (a.get("content") or "")[:200]
-            link = a.get("link", "")
-            date = str(a.get("date") or "")
-            source = a.get("source") or ""
-            
-            db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
-            db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
-            
-        if db_clue_info or db_documents or db_snap_info:
+        if clue_res or snap_res or extract_res:
             db_hit = True
     except Exception as db_err:
         db.log_event(user_id, "customer", "ERROR", f"直连 MySQL 检索企业多源数据失败: {db_err}")
 
-    retrieved_docs = []
+    valid_docs = []
     is_hit = False
     
-    if db_documents:
-        rag = RAGEngine(documents=db_documents)
-        retrieved_docs = rag.retrieve(keyword, top_k=3)
-        
-        if api_key and "your_api_key" not in api_key:
-            # 构建对 Reranker 友好的查询，包含所有的别名和简称，防止大模型判定为不相关
-            rerank_query = f"{keyword} (" + " / ".join(name_list) + ")"
-            retrieved_docs = rag.rerank(rerank_query, retrieved_docs, api_key, base_url, model_name)
-        else:
-            for doc in retrieved_docs:
-                doc["rerank_score"] = doc.get("final_score", 0.0)
-                
-    # 筛选所有匹配分 > 0.20 且最多前 3 篇深度文章进行聚合
-    valid_docs = [doc for doc in retrieved_docs if doc.get("rerank_score", 0.0) > 0.20]
-    if valid_docs:
-        is_hit = True
-        valid_docs = valid_docs[:3]
+    if extract_res:
+        for a in extract_res:
+            t = a.get("title") or a.get("Topic") or ""
+            abst = a.get("Abstract") or a.get("content") or ""
+            score = calculate_subject_score(t, abst, name_list)
+            # 只有分数 >= 5 的文章，才判定该公司为主动动作主体或核心合作方，确保检索相关性
+            if score >= 5:
+                valid_docs.append(a)
+        valid_docs = valid_docs[:5]
+        if valid_docs:
+            is_hit = True
 
     source_type = "mysql_structured_query"
     context = ""
@@ -361,25 +384,28 @@ def handle(keyword: str, user_id: int = None) -> dict:
     db_context_str = "\n\n".join(db_context_pieces)
 
     if is_hit and valid_docs:
-        best_doc = valid_docs[0]
-        msg = f"关系型数据库 RAG 检索成功命中 {len(valid_docs)} 篇深度文章/新闻 (首篇评分: {best_doc.get('rerank_score', 0.0):.4f})"
+        msg = f"基于核心简称【{concise_keyword}】从关系型数据库直接获取舆情文章 (按发布时间由近到远排序)"
         db.log_event(user_id, "customer", "INFO", msg)
         
         context_pieces = []
         for idx, doc in enumerate(valid_docs):
             context_pieces.append(
                 f"【深度舆情/新闻文章片段 {idx + 1}】:\n"
-                f"标题: {doc['metadata']['title']}\n"
-                f"发布日期: {doc['metadata']['publish_date']}\n"
-                f"数据源: {doc['metadata']['source']}\n"
-                f"内容:\n{doc['parent_content']}"
+                f"标题: {doc.get('title') or doc.get('Topic') or '微信舆情/新闻'}\n"
+                f"发布日期: {str(doc.get('date') or '')}\n"
+                f"数据源: {doc.get('source') or '微信舆情数据'}\n"
+                f"内容:\n{doc.get('content') or doc.get('Abstract') or ''}"
             )
         context = "\n\n".join(context_pieces)
         
         if db_context_pieces:
             context += "\n\n" + db_context_str
-        source_type = "mysql_db_bm25_rag"
-        company_metadata = best_doc["metadata"]
+        source_type = "mysql_db_time_desc"
+        company_metadata = {
+            "title": ent_name,
+            "industry": db_clue_info.get("Industry") if db_clue_info else "未知",
+            "publish_date": str(valid_docs[0].get("date") or "最新")
+        }
     elif db_hit:
         msg = f"未匹配到相关的深度文章/新闻，但已匹配到 '{keyword}' 的企业基础信息，执行数据库基础画像。"
         db.log_event(user_id, "customer", "INFO", msg)
@@ -494,6 +520,7 @@ async def handle_stream(keyword: str, user_id: int = None):
             await asyncio.sleep(0.015)
         return
         
+    original_keyword = keyword
     # 1. 尝试精确匹配企业名称 (在线程池中运行数据库)
     def check_exact_sync():
         return find_exact_company(keyword)
@@ -543,19 +570,18 @@ async def handle_stream(keyword: str, user_id: int = None):
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
     
-    name_list = get_company_all_names(keyword)
+    name_list = list(set(get_company_all_names(keyword) + get_company_all_names(original_keyword)))
+    concise_keyword = min([n for n in name_list if len(n) >= 2], key=len) if name_list else keyword
     
     # 2. 从业务数据库中检索企业基础线索、微信文章 and 项目合作新闻
     db_clue_info = None
     db_snap_info = None
-    db_articles = []
-    db_cooperations = []
+    extract_res = []
     db_hit = False
-    db_documents = []
     
     # 在线程池中执行关系数据库查询，避免阻塞事件循环
     def query_db_sync():
-        nonlocal db_clue_info, db_snap_info, db_hit
+        nonlocal db_clue_info, db_snap_info, extract_res, db_hit
         try:
             clue_res = db.query_business_db(
                 "SELECT `企业名称` AS EntName, `省份` AS Province, `城市` AS City, "
@@ -577,78 +603,39 @@ async def handle_stream(keyword: str, user_id: int = None):
             if snap_res:
                 db_snap_info = snap_res[0]
                 
-            # 检索微信公众号动态与项目合作签约动态 (均从 weixin_deepseek_extract_d 统一获取)
+            # 检索微信公众号动态与项目合作签约动态
             extract_res = db.query_business_db(
                 "SELECT `EntName`, `Abstract`, `Topic`, "
                 "`article_title` AS title, `article_content` AS content, `article_url` AS link, "
                 "`publish_time` AS date, `wechat_name` AS source "
                 "FROM weixin_deepseek_extract_d "
                 "WHERE `EntName` IN :names OR `EntShortName` IN :names "
-                "ORDER BY `publish_time` DESC LIMIT 15",
+                "ORDER BY `publish_time` DESC LIMIT 25",
                 {"names": name_list}
             )
             
-            for a in extract_res:
-                db_documents.append({
-                    "title": a.get("title") or a.get("Topic") or "微信舆情/新闻",
-                    "content": a.get("content") or a.get("Abstract") or "",
-                    "publish_date": str(a.get("date") or ""),
-                    "source": a.get("source") or "微信舆情数据",
-                    "link": a.get("link") or "",
-                    "company": keyword
-                })
-                
-            for a in extract_res:
-                ent = a.get("EntName", "")
-                abst = (a.get("Abstract") or "")[:200]
-                topic = a.get("Topic", "")
-                title = a.get("title", "")
-                content = (a.get("content") or "")[:200]
-                link = a.get("link", "")
-                date = str(a.get("date") or "")
-                source = a.get("source") or ""
-                
-                db_articles.append(f"【微信舆情动态】企业名称: {ent} | 标题: {title} | 主题: {topic} | 来源: {source} | 发布时间: {date} | 链接: {link} | 摘要: {abst or content}")
-                db_cooperations.append(f"【合作签约动态】标题: {title} | 来源: {source} | 日期: {date} | 摘要: {content}")
-                
-            if db_clue_info or db_documents or db_snap_info:
+            if clue_res or snap_res or extract_res:
                 db_hit = True
         except Exception as db_err:
             db.log_event(user_id, "customer", "ERROR", f"直连 MySQL 检索企业多源数据失败: {db_err}")
 
     await asyncio.to_thread(query_db_sync)
 
-    # 3. 对从数据库加载的文本记录，在内存中初始化 RAG 引擎，并执行 BM25 检索与大模型重排
-    retrieved_docs = []
+    # 3. 直接使用时间倒序排列的舆情数据
     is_hit = False
+    valid_docs = []
     
-    def run_rag_retrieve_and_rerank():
-        nonlocal retrieved_docs
-        if db_documents:
-            from utils.rag_engine import RAGEngine
-            rag = RAGEngine(documents=db_documents)
-            retrieved_docs = rag.retrieve(keyword, top_k=3)
-            if api_key and "your_api_key" not in api_key:
-                # 构建对 Reranker 友好的查询，包含所有的别名和简称，防止大模型判定为不相关
-                rerank_query = f"{keyword} (" + " / ".join(name_list) + ")"
-                retrieved_docs = rag.rerank(rerank_query, retrieved_docs, api_key, base_url, model_name)
-            else:
-                for doc in retrieved_docs:
-                    doc["rerank_score"] = doc.get("final_score", 0.0)
-        return retrieved_docs
-
-    try:
-        retrieved_docs = await asyncio.to_thread(run_rag_retrieve_and_rerank)
-    except Exception as e:
-        import traceback
-        db.log_event(user_id, "customer", "ERROR", f"RAG检索/重排过程出错: {str(e)}", traceback.format_exc())
-        retrieved_docs = []
-        
-    # 筛选所有匹配分 > 0.20 且最多前 3 篇深度文章进行聚合
-    valid_docs = [doc for doc in retrieved_docs if doc.get("rerank_score", 0.0) > 0.20]
-    if valid_docs:
-        is_hit = True
-        valid_docs = valid_docs[:3]
+    if extract_res:
+        for a in extract_res:
+            t = a.get("title") or a.get("Topic") or ""
+            abst = a.get("Abstract") or a.get("content") or ""
+            score = calculate_subject_score(t, abst, name_list)
+            # 只有分数 >= 5 的文章，才判定该公司为主动动作主体或核心合作方，确保检索相关性
+            if score >= 5:
+                valid_docs.append(a)
+        valid_docs = valid_docs[:5]
+        if valid_docs:
+            is_hit = True
 
     # 4. 融合与状态处理
     source_type = "mysql_structured_query"
@@ -698,25 +685,28 @@ async def handle_stream(keyword: str, user_id: int = None):
     db_context_str = "\n\n".join(db_context_pieces)
 
     if is_hit and valid_docs:
-        best_doc = valid_docs[0]
-        msg = f"关系型数据库 RAG 检索成功命中 {len(valid_docs)} 篇深度文章/新闻 (首篇评分: {best_doc.get('rerank_score', 0.0):.4f})"
+        msg = f"关系型数据库成功获取 {len(valid_docs)} 篇近期舆情文章 (按发布时间由近到远排序)"
         db.log_event(user_id, "customer", "INFO", msg)
         
         context_pieces = []
         for idx, doc in enumerate(valid_docs):
             context_pieces.append(
                 f"【深度舆情/新闻文章片段 {idx + 1}】:\n"
-                f"标题: {doc['metadata']['title']}\n"
-                f"发布日期: {doc['metadata']['publish_date']}\n"
-                f"数据源: {doc['metadata']['source']}\n"
-                f"内容:\n{doc['parent_content']}"
+                f"标题: {doc.get('title') or doc.get('Topic') or '微信舆情/新闻'}\n"
+                f"发布日期: {str(doc.get('date') or '')}\n"
+                f"数据源: {doc.get('source') or '微信舆情数据'}\n"
+                f"内容:\n{doc.get('content') or doc.get('Abstract') or ''}"
             )
         context = "\n\n".join(context_pieces)
         
         if db_context_pieces:
             context += "\n\n" + db_context_str
-        source_type = "mysql_db_bm25_rag"
-        company_metadata = best_doc["metadata"]
+        source_type = "mysql_db_time_desc"
+        company_metadata = {
+            "title": ent_name,
+            "industry": db_clue_info.get("Industry") if db_clue_info else "未知",
+            "publish_date": str(valid_docs[0].get("date") or "最新")
+        }
     elif db_hit:
         msg = f"未匹配到相关的深度文章/新闻，但已匹配到 '{keyword}' 的企业基础信息，执行数据库基础画像。"
         db.log_event(user_id, "customer", "INFO", msg)
