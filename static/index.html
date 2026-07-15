@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 客户智能洞察助理</title>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         const renderer = new marked.Renderer();
-        renderer.link = function() {
+        renderer.link = function () {
             if (typeof arguments[0] === 'object') {
                 const token = arguments[0];
                 const href = token.href;
@@ -32,7 +35,7 @@
             // 将文本中未被解析的 **xxx** 转换为 <strong>xxx</strong>
             // 使用非贪婪匹配且不包含换行符的内容
             let processed = text.replace(/\*\*([^\n*]+?)\*\*/g, '<strong>$1</strong>');
-            
+
             if (payload && payload.type === 'citations' && payload.items) {
                 processed = processed.replace(/\[(\d+)\]/g, (match, indexStr) => {
                     let docIndex = parseInt(indexStr) - 1;
@@ -244,8 +247,13 @@
         }
 
         @keyframes float {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(80px, 50px) scale(1.15); }
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(80px, 50px) scale(1.15);
+            }
         }
 
         /* 登录/注册全屏模态框 */
@@ -642,12 +650,24 @@
             animation: fadeIn 0.4s ease;
         }
 
-        .message-row.user { justify-content: flex-end; }
-        .message-row.bot { justify-content: flex-start; }
+        .message-row.user {
+            justify-content: flex-end;
+        }
+
+        .message-row.bot {
+            justify-content: flex-start;
+        }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .avatar {
@@ -701,24 +721,29 @@
         }
 
         /* Markdown 内容特定样式 */
-        .bubble-md h2, .bubble-md h3 {
+        .bubble-md h2,
+        .bubble-md h3 {
             margin-bottom: 12px;
             color: var(--text-primary);
             font-weight: 600;
         }
+
         .bubble-md h2 {
             font-size: 16px;
             border-bottom: 1px solid var(--glass-border);
             padding-bottom: 6px;
             margin-top: 6px;
         }
+
         .bubble-md h3 {
             font-size: 14px;
             margin-top: 14px;
         }
+
         .bubble-md p {
             margin-bottom: 12px;
         }
+
         .bubble-md blockquote {
             border-left: 3px solid var(--accent-primary);
             padding-left: 12px;
@@ -729,13 +754,16 @@
             border-radius: 4px;
             margin: 12px 0;
         }
+
         .bubble-md ul {
             margin-left: 20px;
             margin-bottom: 12px;
         }
+
         .bubble-md li {
             margin-bottom: 6px;
         }
+
         .bubble-md .badge {
             background: rgba(59, 130, 246, 0.15);
             border: 1px solid rgba(59, 130, 246, 0.25);
@@ -865,7 +893,9 @@
             transition: opacity 0.3s;
         }
 
-        .card-img-container:hover img { opacity: 1; }
+        .card-img-container:hover img {
+            opacity: 1;
+        }
 
         .card-img-overlay {
             position: absolute;
@@ -895,7 +925,9 @@
             transition: border-color 0.3s;
         }
 
-        .card-file:hover { border-color: #ef4444; }
+        .card-file:hover {
+            border-color: #ef4444;
+        }
 
         .file-icon {
             font-size: 30px;
@@ -948,7 +980,9 @@
             flex-shrink: 0;
         }
 
-        .download-btn:hover { opacity: 0.9; }
+        .download-btn:hover {
+            opacity: 0.9;
+        }
 
         .webhook-badge {
             background: rgba(16, 185, 129, 0.15);
@@ -996,9 +1030,13 @@
             color: var(--text-primary);
         }
 
-        .custom-table tr:last-child td { border-bottom: none; }
+        .custom-table tr:last-child td {
+            border-bottom: none;
+        }
 
-        .custom-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        .custom-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
 
         .table-link {
             color: #60a5fa;
@@ -1006,7 +1044,9 @@
             font-weight: 500;
         }
 
-        .table-link:hover { text-decoration: underline; }
+        .table-link:hover {
+            text-decoration: underline;
+        }
 
         .score-pill {
             background: rgba(245, 158, 11, 0.15);
@@ -1109,13 +1149,35 @@
             border-left: 3px solid #64748b;
         }
 
-        .log-row.INFO { border-left-color: #3b82f6; color: #93c5fd; }
-        .log-row.WARNING { border-left-color: #eab308; color: #fef08a; }
-        .log-row.ERROR { border-left-color: #ef4444; color: #fca5a5; }
+        .log-row.INFO {
+            border-left-color: #3b82f6;
+            color: #93c5fd;
+        }
 
-        .log-time { color: #64748b; margin-right: 10px; }
-        .log-level { font-weight: 700; margin-right: 10px; }
-        .log-msg { color: #e2e8f0; }
+        .log-row.WARNING {
+            border-left-color: #eab308;
+            color: #fef08a;
+        }
+
+        .log-row.ERROR {
+            border-left-color: #ef4444;
+            color: #fca5a5;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 10px;
+        }
+
+        .log-level {
+            font-weight: 700;
+            margin-right: 10px;
+        }
+
+        .log-msg {
+            color: #e2e8f0;
+        }
+
         .log-details {
             margin-top: 6px;
             font-size: 11px;
@@ -1135,7 +1197,7 @@
             transition: all 0.3s;
         }
 
-        .chat-area > .input-area {
+        .chat-area>.input-area {
             padding: 24px 30px 30px 30px;
         }
 
@@ -1171,7 +1233,9 @@
             height: 41px;
         }
 
-        .chat-input::placeholder { color: #555e6b; }
+        .chat-input::placeholder {
+            color: #555e6b;
+        }
 
         .send-btn {
             background: var(--accent-gradient);
@@ -1201,7 +1265,9 @@
             transition: transform 0.2s;
         }
 
-        .send-btn:hover svg { transform: translate(2px, -2px); }
+        .send-btn:hover svg {
+            transform: translate(2px, -2px);
+        }
 
         .stop-btn {
             background: rgba(239, 68, 68, 0.1);
@@ -1248,12 +1314,24 @@
             animation: typing 1.4s infinite ease-in-out;
         }
 
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
 
         @keyframes typing {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-6px); }
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-6px);
+            }
         }
 
         /* 全屏长图查看器 */
@@ -1315,7 +1393,9 @@
             z-index: 100000;
         }
 
-        .close-overlay-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        .close-overlay-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
 
         /* 欢迎界面样式 */
         .welcome-container {
@@ -1374,69 +1454,35 @@
             line-height: 1.5;
         }
 
-        /* 建议指令卡片 */
+        /* 建议指令热词 */
         .welcome-suggestions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            width: 100%;
-            max-width: 700px;
-        }
-
-        .suggestion-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            padding: 16px 20px;
             display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            cursor: pointer;
-            text-align: left;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .suggestion-card:hover {
-            background: rgba(255, 255, 255, 0.06);
-            border-color: rgba(59, 130, 246, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-        }
-
-        .suggestion-icon {
-            font-size: 22px;
-            background: rgba(255, 255, 255, 0.05);
-            width: 42px;
-            height: 42px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
+            flex-wrap: wrap;
             justify-content: center;
-            flex-shrink: 0;
-            transition: all 0.2s;
+            gap: 12px;
+            width: 100%;
+            max-width: 650px;
+            margin-top: 10px;
         }
 
-        .suggestion-card:hover .suggestion-icon {
-            background: rgba(59, 130, 246, 0.15);
-            color: #ffffff;
-        }
-
-        .suggestion-text {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .suggestion-text strong {
+        .suggestion-pill {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 8px 18px;
             font-size: 13.5px;
-            color: var(--text-primary);
-            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
         }
 
-        .suggestion-text span {
-            font-size: 11.5px;
-            color: var(--text-secondary);
-            line-height: 1.4;
+        .suggestion-pill:hover {
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.3);
+            color: var(--text-primary);
+            transform: translateY(-2px);
         }
 
         #welcomeInputPlaceholder {
@@ -1487,8 +1533,13 @@
         }
 
         @keyframes pulseBg {
-            0% { background: rgba(255, 255, 255, 0.02); }
-            100% { background: rgba(255, 255, 255, 0.05); }
+            0% {
+                background: rgba(255, 255, 255, 0.02);
+            }
+
+            100% {
+                background: rgba(255, 255, 255, 0.05);
+            }
         }
 
         .generating-header {
@@ -1506,9 +1557,17 @@
         }
 
         @keyframes spinIcon {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.15); }
-            100% { transform: scale(1); }
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.15);
+            }
+
+            100% {
+                transform: scale(1);
+            }
         }
 
         .generating-progress-bar {
@@ -1571,8 +1630,13 @@
         }
 
         @keyframes blinkDot {
-            0% { opacity: 0.4; }
-            100% { opacity: 1; }
+            0% {
+                opacity: 0.4;
+            }
+
+            100% {
+                opacity: 1;
+            }
         }
 
         /* Colleague's High-Potential Customers Card Styles */
@@ -1659,6 +1723,7 @@
         }
     </style>
 </head>
+
 <body>
 
     <!-- 炫光背景 -->
@@ -1680,7 +1745,8 @@
                 </div>
                 <div class="input-group">
                     <label>密码</label>
-                    <input type="password" id="passwordInput" placeholder="请输入密码" onkeydown="handleAuthKeydown(event)" />
+                    <input type="password" id="passwordInput" placeholder="请输入密码"
+                        onkeydown="handleAuthKeydown(event)" />
                 </div>
                 <div class="auth-error" id="authError"></div>
                 <button class="auth-btn" id="authSubmitBtn" onclick="submitAuth()">立即登录</button>
@@ -1699,7 +1765,9 @@
             <div class="session-sidebar-header">
                 <h3 id="sessionSidebarTitle">历史记录</h3>
                 <button class="new-chat-btn" onclick="startNewConversation()">
-                    <svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                    </svg>
                     新建会话
                 </button>
             </div>
@@ -1721,7 +1789,7 @@
                 <div class="header-left">
                     <button class="sidebar-toggle-btn" id="sidebarToggle" onclick="toggleSidebar()" title="展开/折叠侧边栏">
                         <svg viewBox="0 0 24 24">
-                            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
                         </svg>
                     </button>
                     <div class="chat-status">
@@ -1740,45 +1808,30 @@
                 <div class="welcome-header">
                     <div class="welcome-logo">
                         <svg viewBox="0 0 24 24">
-                            <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/>
+                            <path
+                                d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z" />
                         </svg>
                     </div>
                     <h1 class="welcome-title">你好，我是 客户智能洞察助理</h1>
                     <p class="welcome-subtitle">输入你想研究的客户、区域或行业，我将通过智能 RAG 和多场景意图路由器为您解答。</p>
                 </div>
-                
+
                 <!-- 建议指令 -->
                 <div class="welcome-suggestions">
-                    <div class="suggestion-card" onclick="useSuggestion('我想看一家企业的精准画像')">
-                        <div class="suggestion-icon">🏢</div>
-                        <div class="suggestion-text">
-                            <strong>分析企业画像</strong>
-                            <span>输入企业名称如“上海电信”进行多源RAG精准画像分析</span>
-                        </div>
+                    <div class="suggestion-pill" onclick="useSuggestion('请帮我分析上海电信怎么样')">
+                        "请帮我分析上海电信怎么样"
                     </div>
-                    <div class="suggestion-card" onclick="useSuggestion('我想生成一份区域经济报告')">
-                        <div class="suggestion-icon">📊</div>
-                        <div class="suggestion-text">
-                            <strong>生成区域报告</strong>
-                            <span>分析特定行政区的区域经济指标与可视化图表</span>
-                        </div>
+                    <div class="suggestion-pill" onclick="useSuggestion('生成浦东新区区域经济报告')">
+                        "生成浦东新区区域经济报告"
                     </div>
-                    <div class="suggestion-card" onclick="useSuggestion('我想查看行业发展趋势报告')">
-                        <div class="suggestion-icon">📄</div>
-                        <div class="suggestion-text">
-                            <strong>剖析行业深度</strong>
-                            <span>一键获取指定行业分析及PDF报告</span>
-                        </div>
+                    <div class="suggestion-pill" onclick="useSuggestion('我想查看人工智能行业发展趋势')">
+                        "我想查看人工智能行业发展趋势"
                     </div>
-                    <div class="suggestion-card" onclick="useSuggestion('我想找一些高潜客户线索')">
-                        <div class="suggestion-icon">🔍</div>
-                        <div class="suggestion-text">
-                            <strong>推荐高潜客户</strong>
-                            <span>智能筛选匹配的潜在企业客户意向名单及导出 Excel 列表</span>
-                        </div>
+                    <div class="suggestion-pill" onclick="useSuggestion('帮我找浦东新区的高潜客户线索')">
+                        "帮我找浦东新区的高潜客户线索"
                     </div>
                 </div>
-                
+
                 <!-- 欢迎界面输入框占位符 (未开始对话时，输入框在此居中) -->
                 <div id="welcomeInputPlaceholder"></div>
             </div>
@@ -1802,15 +1855,19 @@
             <!-- 对话底栏 -->
             <footer class="input-area" id="inputArea">
                 <div class="input-wrapper">
-                    <textarea class="chat-input" id="chatInput" placeholder="向 客户智能洞察助理 提问..." onkeydown="handleChatKeydown(event)" oninput="this.style.height='auto'; this.style.height = this.scrollHeight + 'px'" rows="1"></textarea>
-                    <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display: none;" title="停止生成">
+                    <textarea class="chat-input" id="chatInput" placeholder="向 客户智能洞察助理 提问..."
+                        onkeydown="handleChatKeydown(event)"
+                        oninput="this.style.height='auto'; this.style.height = this.scrollHeight + 'px'"
+                        rows="1"></textarea>
+                    <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display: none;"
+                        title="停止生成">
                         <svg viewBox="0 0 24 24">
-                            <path d="M6,19H10V5H6V19M14,5V19H18V5H14Z"/>
+                            <path d="M6,19H10V5H6V19M14,5V19H18V5H14Z" />
                         </svg>
                     </button>
                     <button class="send-btn" onclick="sendMessage()">
                         <svg viewBox="0 0 24 24">
-                            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/>
+                            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
                         </svg>
                     </button>
                 </div>
@@ -1840,7 +1897,7 @@
             if (isSidebarCollapsed) {
                 document.querySelector('.app-container').classList.add('sidebar-collapsed');
             }
-            
+
             // Check and apply saved theme
             const savedTheme = localStorage.getItem('theme');
             if (savedTheme === 'light') {
@@ -1850,7 +1907,7 @@
                 if (icon) icon.innerText = '🌙';
                 if (text) text.innerText = '夜间模式';
             }
-            
+
             checkAuth();
         });
 
@@ -1858,7 +1915,7 @@
             const root = document.documentElement;
             const icon = document.getElementById('themeIcon');
             const text = document.getElementById('themeText');
-            
+
             const isLight = root.classList.toggle('light-theme');
             if (isLight) {
                 if (icon) icon.innerText = '🌙';
@@ -1928,12 +1985,12 @@
                 localStorage.setItem('insight_agent_user', JSON.stringify(currentUser));
                 document.getElementById('authModal').classList.add('hidden');
                 document.getElementById('usernameDisplay').innerText = currentUser.username;
-                
+
                 // 清空输入框并获取历史
                 document.getElementById('usernameInput').value = "";
                 document.getElementById('passwordInput').value = "";
                 errorEl.innerText = "";
-                
+
                 fetchConversations();
             } catch (err) {
                 errorEl.innerText = "❌ 无法连接到身份验证服务";
@@ -1962,7 +2019,7 @@
             try {
                 const response = await fetch(`/api/conversations?user_id=${currentUser.id}&scene=all`);
                 const data = await response.json();
-                
+
                 listEl.innerHTML = '';
                 if (data.length === 0) {
                     listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;padding:20px;line-height:1.5;">暂无历史对话<br/>输入新消息开始</div>';
@@ -1998,7 +2055,7 @@
                         return;
                     }
                 }
-                
+
                 // 甲方要求：每次登陆或刷新页面后，不要默认展示上一次的历史记录，而是展示空白的新对话
                 activeConversationId = null;
                 clearChat();
@@ -2030,23 +2087,23 @@
 
         async function selectConversation(id) {
             if (activeConversationId === id) return;
-            
+
             if (showingLogs) {
                 toggleLogsView();
             }
             activeConversationId = id;
             document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
-            
+
             const el = document.getElementById(`conv-${id}`);
             if (el) el.classList.add('active');
 
             clearChat();
-            
+
             // 拉取此会话的历史消息
             try {
                 const response = await fetch(`/api/conversations/${id}`);
                 const messages = await response.json();
-                
+
                 if (messages.length === 0) {
                     updateUIState(false);
                 } else {
@@ -2059,7 +2116,7 @@
                         }
                     });
                 }
-                
+
                 if (activeStreams[id]) {
                     const stream = activeStreams[id];
                     const container = document.getElementById('messagesContainer');
@@ -2073,7 +2130,7 @@
                 } else {
                     document.getElementById('stopBtn').style.display = 'none';
                 }
-                
+
                 scrollToBottom();
             } catch (err) {
                 updateUIState(true);
@@ -2106,7 +2163,7 @@
             const inputPlaceholder = document.getElementById('welcomeInputPlaceholder');
             const inputArea = document.getElementById('inputArea');
             const chatArea = document.getElementById('chatArea');
-            
+
             if (!hasMessages) {
                 welcome.style.display = 'flex';
                 messages.style.display = 'none';
@@ -2170,7 +2227,7 @@
             if (titleEl && titleEl.innerText === "新对话") {
                 const newTitle = text.substring(0, 12);
                 titleEl.innerText = newTitle;
-                
+
                 // 同步新标题到后端数据库进行持久化
                 fetch(`/api/conversations/${activeConversationId}`, {
                     method: 'PUT',
@@ -2470,14 +2527,16 @@
         function useSuggestion(text) {
             const inputEl = document.getElementById('chatInput');
             inputEl.value = text;
-            sendMessage();
+            inputEl.focus();
+            inputEl.style.height = 'auto';
+            inputEl.style.height = inputEl.scrollHeight + 'px';
         }
 
         function appendUserBubble(content) {
             const container = document.getElementById('messagesContainer');
             const row = document.createElement('div');
             row.className = 'message-row user';
-            
+
             const bubble = document.createElement('div');
             bubble.className = 'bubble bubble-md';
             bubble.innerText = content;
@@ -2490,7 +2549,7 @@
             const container = document.getElementById('messagesContainer');
             const row = document.createElement('div');
             row.className = 'message-row bot';
-            
+
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
             avatar.innerHTML = `
@@ -2542,7 +2601,7 @@
                     </div>
                 `;
                 bubble.appendChild(card);
-            } 
+            }
             else if (payload.type === 'html_link') {
                 const card = document.createElement('div');
                 card.className = 'card-file';
@@ -2556,22 +2615,22 @@
                     <a href="${payload.url}" target="_blank" class="download-btn" style="background:var(--accent-gradient)">打开网页</a>
                 `;
                 bubble.appendChild(card);
-            } 
+            }
             else if (payload.type === 'file_link') {
                 const card = document.createElement('div');
                 card.className = 'card-file';
-                
+
                 const isHtml = payload.file_type === 'html' || payload.url.endsWith('.html');
                 const fileIcon = isHtml ? '🌐' : '📕';
                 const fileDesc = isHtml ? '<span>HTML 报告网页</span> | <span>支持打印为 A4 PDF</span>' : '<span>PDF 报告文档</span> | <span>A4 标准尺寸</span>';
-                
+
                 let actionBtnHtml = '';
                 if (isHtml) {
                     actionBtnHtml = `<a href="${payload.url}" target="_blank" class="download-btn">浏览报告</a>`;
                 } else {
                     actionBtnHtml = `<a href="${payload.url}" download class="download-btn">下载报告</a>`;
                 }
-                
+
                 card.innerHTML = `
                     <div class="file-icon" style="${isHtml ? 'background:rgba(59, 130, 246, 0.15);color:#60a5fa;' : ''}">${fileIcon}</div>
                     <div class="file-details">
@@ -2581,7 +2640,7 @@
                     ${actionBtnHtml}
                 `;
                 bubble.appendChild(card);
-            } 
+            }
             else if (payload.type === 'regional_report') {
                 const action = payload.actions && payload.actions.length > 0 ? payload.actions[0] : null;
                 const metrics = payload.metrics || {};
@@ -2645,7 +2704,7 @@
             else if (payload.type === 'table') {
                 const card = document.createElement('div');
                 card.className = 'table-container';
-                
+
                 let trs = '';
                 payload.data.forEach(item => {
                     const displayName = item.customer_name || item.name;
@@ -2660,7 +2719,7 @@
                         </tr>
                     `;
                 });
-                
+
                 card.innerHTML = `
                     <table class="custom-table">
                         <thead>
@@ -2703,7 +2762,7 @@
             const row = document.createElement('div');
             row.className = 'message-row bot';
             row.id = id;
-            
+
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
             avatar.innerHTML = '🤖';
@@ -2772,7 +2831,7 @@
             try {
                 const response = await fetch('/api/system/logs');
                 const logs = await response.json();
-                
+
                 consoleEl.innerHTML = '';
                 if (logs.length === 0) {
                     consoleEl.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;">暂无日志输出。</div>';
@@ -2782,21 +2841,21 @@
                 logs.forEach(log => {
                     const row = document.createElement('div');
                     row.className = `log-row ${log.level}`;
-                    
+
                     const timeSpan = `<span class="log-time">[${log.timestamp}]</span>`;
                     const levelSpan = `<span class="log-level">[${log.level}]</span>`;
                     const sceneSpan = log.scene ? `<span style="color:#a855f7;margin-right:10px;">[场景:${log.scene}]</span>` : '';
                     const msgSpan = `<span class="log-msg">${log.message}</span>`;
-                    
+
                     row.innerHTML = timeSpan + levelSpan + sceneSpan + msgSpan;
-                    
+
                     if (log.details) {
                         const detailsDiv = document.createElement('pre');
                         detailsDiv.className = 'log-details';
                         detailsDiv.innerText = log.details;
                         row.appendChild(detailsDiv);
                     }
-                    
+
                     consoleEl.appendChild(row);
                 });
             } catch (err) {
@@ -2969,13 +3028,13 @@
 
         async function saveHtmlAsPDF(btnEl, url, title) {
             if (btnEl.classList.contains('loading')) return;
-            
+
             btnEl.classList.add('loading');
             btnEl.style.opacity = '0.7';
             btnEl.style.pointerEvents = 'none';
             const originalText = btnEl.innerText;
             btnEl.innerText = '⏳ 正在生成...';
-            
+
             try {
                 const iframe = document.createElement('iframe');
                 iframe.style.position = 'fixed';
@@ -2985,15 +3044,15 @@
                 iframe.style.height = '1024px';
                 iframe.style.border = 'none';
                 iframe.src = url;
-                
+
                 document.body.appendChild(iframe);
-                
+
                 await new Promise((resolve, reject) => {
                     let timeoutId = setTimeout(() => {
                         reject(new Error('PDF 生成超时'));
                     }, 25000);
 
-                    iframe.onload = function() {
+                    iframe.onload = function () {
                         setTimeout(() => {
                             try {
                                 if (iframe.contentWindow && iframe.contentWindow.downloadPDF) {
@@ -3011,13 +3070,13 @@
                         }, 1000);
                     };
                 });
-                
+
                 setTimeout(() => {
                     if (iframe && iframe.parentNode) {
                         iframe.remove();
                     }
                 }, 10000);
-                
+
             } catch (err) {
                 console.error('Failed to generate PDF:', err);
                 alert('PDF 生成失败，将为您在新窗口打开报告进行手动保存：' + err.message);
@@ -3031,4 +3090,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -26,7 +26,7 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
         
     # 0. 优先匹配数据库中的企业简称/别名/全称 (仅在输入相对简短且不含其他场景明确特征词时，以防误碰)
     text_lower = text.lower()
-    has_other_intent_words = any(w in text_lower for w in ["区", "行业", "pdf", "html", "报告", "高潜", "名单", "excel", "导出", "趋势", "对比", "分析", "策略", "商机"])
+    has_other_intent_words = any(w in text_lower for w in ["区", "行业", "pdf", "html", "报告", "高潜", "名单", "excel", "导出", "趋势", "对比", "分析", "策略", "商机", "线索", "舆情", "规模", "竞争", "客户", "意向"])
     if len(text_lower) >= 2 and not has_other_intent_words:
         try:
             from utils.alias_helper import alias_helper
@@ -103,14 +103,51 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
             "航空", "大飞机", "水务"
         ]
         
-        # 0. 上海市/全市商机报告意图：展示 16 个区的汇总明细
-        if any(w in text_lower for w in ["上海市", "全上海", "全市", "上海"]) and any(w in text_lower for w in ["报告", "商机", "区域", "明细"]):
-            # 如果文本中同时包含特定行业，或者明确要求“行业报告”，则不判定为区域报告
-            if not any(ind in text_lower for ind in industries) and "行业报告" not in text_lower and "行业研报" not in text_lower:
-                return TaskCommand(intent="regional_report", keyword="上海市")
+        # 优先级 1: 区域报告 (问题涉及“区域+线索/舆情/商机”等关键词，即使含具体客户)
+        regional_keywords = ["线索", "舆情", "商机", "报告", "图表", "明细"]
+        has_regional_word = False
+        extracted_region = None
+        
+        for r in ["静安", "浦东", "黄浦", "徐汇", "长宁", "普陀", "虹口", "杨浦", "闵行", "宝山", "嘉定", "金山", "松江", "青浦", "奉贤", "崇明"]:
+            if r in text_lower:
+                has_regional_word = True
+                extracted_region = f"{r}新区" if r == "浦东" else f"{r}区"
+                break
+        if not has_regional_word and any(w in text_lower for w in ["上海", "全市", "区域"]):
+            has_regional_word = True
+            extracted_region = "上海市" if any(w in text_lower for w in ["上海", "全市"]) else None
 
-        # 1. 高潜客户意图：优先于区域报告，避免“推荐静安区高潜客户”被误判为区域分析
-        if any(w in text_lower for w in ["高潜", "潜在客户", "重点客户", "推荐客户", "客户名单", "线索", "表格", "名单", "excel", "导出"]):
+        if has_regional_word and any(w in text_lower for w in regional_keywords):
+            return TaskCommand(intent="regional_report", keyword=extracted_region)
+        
+        # 针对未指定区县但明确请求区域报告的兜底
+        if "区域报告" in text_lower or "区域经济" in text_lower:
+            return TaskCommand(intent="regional_report", keyword=None)
+
+        # 优先级 2: 企业画像 (问题中提到具体企业名称)
+        for comp in ["电信", "移动", "联通", "钛度", "特斯拉"]:
+            if comp in text_lower:
+                keyword_map = {
+                    "电信": "中国电信股份有限公司上海分公司",
+                    "移动": "中国移动通信集团上海有限公司",
+                    "联通": "中国联合网络通信有限公司上海市分公司",
+                    "钛度": "钛度智能机器人设计与研发中心",
+                    "特斯拉": "特斯拉"
+                }
+                return TaskCommand(intent="query_customer", keyword=keyword_map[comp])
+
+        # 通用企业画像特征词
+        for indicator in ["怎么样", "画像", "痛点", "介绍", "情况", "动态"]:
+            if indicator in text_lower:
+                parts = text_lower.split(indicator)
+                kw = parts[0].strip()
+                if kw.endswith("的"):
+                    kw = kw[:-1].strip()
+                if kw and len(kw) > 1 and kw not in ["行业", "区域", "客户"]:
+                    return TaskCommand(intent="query_customer", keyword=kw)
+
+        # 优先级 3: 高潜推荐 (问题涉及客户/高潜/意向等关键词，且不含具体企业名)
+        if any(w in text_lower for w in ["高潜", "潜在", "重点客户", "推荐", "客户", "线索", "名单", "excel", "导出", "意向", "表格"]):
             extracted = []
             for r in districts:
                 if r.lower() in text_lower and r not in extracted:
@@ -122,65 +159,24 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
                     break
             if not extracted:
                 cleaned = text
-                for noise in ["推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "导出", "excel", "Excel", "表格", "有哪些", "帮我", "给我"]:
+                for noise in ["推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "导出", "excel", "Excel", "表格", "有哪些", "帮我", "给我", "意向"]:
                     cleaned = cleaned.replace(noise, " ")
                 cleaned = " ".join(cleaned.split())
                 if cleaned:
                     extracted.append(cleaned)
             return TaskCommand(intent="high_potential", keyword=" ".join(extracted) if extracted else None)
-            
-        # 2. 区级报告意图
-        for r in ["静安", "浦东", "黄浦", "徐汇", "长宁", "普陀", "虹口", "杨浦"]:
-            if r in text_lower and any(w in text_lower for w in ["区", "报告", "图表", "画像", "商机"]):
-                # 如果包含具体行业关键字，或明确要求“行业报告”，则不判断为区级报告
-                if not any(ind in text_lower for ind in industries) and "行业报告" not in text_lower and "行业研报" not in text_lower:
-                    suffix = "新区" if r == "浦东" else "区"
-                    return TaskCommand(intent="regional_report", keyword=f"{r}{suffix}")
-                    
-        # 2.1 针对未指定区县但请求区域经济报告的兜底
-        if "区域报告" in text_lower or "区域经济报告" in text_lower or "区域商机" in text_lower:
-            return TaskCommand(intent="regional_report", keyword=None)
-                
-        # 3. 行业报告意图
-        for ind in industries:
-            if ind in text_lower and any(w in text_lower for w in ["行业", "业", "pdf", "html", "发送", "群", "报告"]):
-                keyword = "人工智能行业" if ind in ["人工智能", "ai"] else ("医药行业" if ind in ["医疗", "医药", "生物医药"] else f"{ind}行业" if not ind.endswith("行业") and not ind.endswith("业") else ind)
-                return TaskCommand(intent="industry_report", keyword=keyword)
-                
-        # 3.1 针对未指定行业但请求行业报告的兜底
-        # 只要输入中包含"行业报告"或"行业研报"，或者"生成/帮我/一份"与"报告"并存，均视为全行业报告
-        if ("行业报告" in text_lower or "行业研报" in text_lower
-                or "发行业报告" in text_lower
-                or (("报告" in text_lower or "研报" in text_lower)
-                    and ("生成" in text_lower or "帮我" in text_lower
-                         or "帮他" in text_lower or "一份" in text_lower
-                         or "行业" in text_lower))):
-            return TaskCommand(intent="industry_report", keyword="全行业")
 
-        # 4. 查询客户意图（判断公司名）
-        for comp in ["电信", "移动", "联通", "钛度", "特斯拉"]:
-            if comp in text_lower:
-                keyword_map = {
-                    "电信": "中国电信股份有限公司上海分公司",
-                    "移动": "中国移动通信集团上海有限公司",
-                    "联通": "中国联合网络通信有限公司上海市分公司",
-                    "钛度": "钛度智能机器人设计与研发中心",
-                    "特斯拉": "特斯拉"
-                }
-                return TaskCommand(intent="query_customer", keyword=keyword_map[comp])
-                
-        # 更加通用的关键词模式匹配
-        for indicator in ["怎么样", "画像", "痛点", "商机", "介绍", "情况", "动态"]:
-            if indicator in text_lower:
-                parts = text_lower.split(indicator)
-                kw = parts[0].strip()
-                # 去掉末尾的助词"的"，但保留公司名中有意义的词（如"游戏"、"科技"、"集团"）
-                if kw.endswith("的"):
-                    kw = kw[:-1].strip()
-                if kw:
-                    return TaskCommand(intent="query_customer", keyword=kw)
-                    
-        if len(text_lower.strip()) < 10 and not any(w in text_lower for w in ["区", "行业", "pdf", "html", "报告", "高潜", "名单", "excel", "导出"]):
+        # 优先级 4: 行业深度 (问题涉及行业趋势/规模/竞争等关键词)
+        if any(w in text_lower for w in ["行业", "趋势", "规模", "竞争", "研报", "pdf", "html"]):
+            extracted_ind = "全行业"
+            for ind in industries:
+                if ind in text_lower:
+                    extracted_ind = "人工智能行业" if ind in ["人工智能", "ai"] else ("医药行业" if ind in ["医疗", "医药", "生物医药"] else f"{ind}行业" if not ind.endswith("行业") and not ind.endswith("业") else ind)
+                    break
+            return TaskCommand(intent="industry_report", keyword=extracted_ind)
+            
+        # 兜底：短文本无特征词视为查企业
+        if len(text_lower.strip()) < 10 and not any(w in text_lower for w in ["区", "行业", "pdf", "html", "报告", "高潜", "名单", "excel", "导出", "线索", "舆情", "规模", "竞争", "客户"]):
             return TaskCommand(intent="query_customer", keyword=text_lower.strip())
                 
         # 最终兜底
@@ -199,21 +195,21 @@ def get_intent_router(user_input: str, user_id: int = None, chat_history: list =
         
         system_prompt = (
             "你是一个严谨的业务路由专家。分析用户的输入，判断意图并提取核心实体，以标准的 JSON 格式返回。\n"
-            "返回的 JSON 必须且只能包含以下两个字段：\n"
-            "1. 'intent': 必须是以下五个之一:\n"
-            "   - 'query_customer' (当用户询问某具体公司/客户的概况、画像、怎么样、痛点时，例如：'莉莉丝游戏怎么样'、'米哈游的情况'、'特斯拉介绍')\n"
-            "   - 'regional_report' (当用户要查看某行政区的经济指标、图表、长图或区级报告时。注意：仅限于无特定行业属性的区域宏观报告，如'上海市商机报告'、'静安区区域报告')\n"
-            "   - 'industry_report' (当用户需要生成行业深度分析、HTML/PDF 报告、或明确包含'行业报告'、'行业研报'字眼时。)\n"
-            "   - 'high_potential' (当用户要求查看高潜客户、重点客户、潜在客户、推荐名单、展示客户表格、线索或导出 Excel 时)\n"
-            "   - 'general_chat' (当用户进行通用聊天、问候、跨行业对比、分析建议、询问业务策略、比较两个行业、为什么、怎么办等非具体报表查询的灵活开放性提问时)\n"
-            "2. 'keyword': 根据意图提取最合适的主体名称：\n"
-            "   - 对于 'query_customer'，提取具体的公司/企业/客户名称（如'莉莉丝游戏'、'上海电信'）。\n"
-            "   - 对于 'regional_report'，提取具体的行政区名称（如'上海市'、'静安区'、'浦东新区'）。\n"
-            "   - 对于 'industry_report'，必须且只能提取具体的行业名称（如'汽车行业'、'人工智能'）。若用户表达的是‘全行业报告’、‘上海市全行业’或未指定具体行业，则 keyword 必须为'全行业'，绝对不要单独将城市或行政区（如'上海市'、'静安区'）作为行业 keyword 提取。\n"
-            "   - 对于 'high_potential'，提取行政区和/或行业名称。\n"
-            "   - 对于 'general_chat'，请将用户提问中包含的实体（如'新能源'、'人工智能'等）作为 keyword 返回，没有则为 null。\n\n"
-            "【极端重要提示】：如果用户输入仅仅是一个地名或行业名（例如：'浦东新区'、'通信行业'），你必须结合上下文中的 assistant 提问来决定 intent！如果上一轮 assistant 问的是“您想挖掘哪个行政区或行业的**高潜客户**？”，那么当前 intent 必须是 'high_potential'，而绝对不能判定为 'regional_report'！同理，如果是在问企业画像，那就是 'query_customer'。不要因为输入有地名就盲目判定为区域报告！\n\n"
-            "注意：你的回答必须是合法的 JSON 字符串，不能包含 ```json 这样的 markdown 标记，不要有任何多余的解释。"
+            "返回的 JSON 必须且只能包含以下两个字段：'intent' 和 'keyword'。\n\n"
+            "【统一路由规则优先级】(请严格按照以下顺序判断)：\n"
+            "1. 'regional_report' (区域报告): 当问题涉及“行政区域”并带有“线索/舆情/商机/报告”等关键词时（如'静安区的线索'，'上海市的区域商机'），即使提及了具体客户也必须去区域报告。\n"
+            "2. 'query_customer' (企业画像): 如果不符合区域报告，且问题中明确提到具体的企业/公司名称时（如'莉莉丝游戏怎么样'，'特斯拉介绍'）。\n"
+            "3. 'high_potential' (高潜推荐): 如果排除了具体企业名，且问题涉及'客户/高潜/意向/推荐/名单/线索'等关键词时（如'给我推荐一些高潜客户'，'通信行业的意向名单'）。\n"
+            "4. 'industry_report' (行业深度): 当问题涉及'行业趋势/规模/竞争/行业研报'等关键词时。\n"
+            "5. 'general_chat' (通用问答): 无法归入上述四类的通用聊天或跨行业对比。\n\n"
+            "【keyword 提取规则】：\n"
+            "   - 对于 'query_customer'，提取具体的公司名称。\n"
+            "   - 对于 'regional_report'，提取具体的行政区名称（如'上海市'、'静安区'），若没有提取到具体区则为 null。\n"
+            "   - 对于 'industry_report'，提取具体的行业名称。若无具体行业，则必须为'全行业'。\n"
+            "   - 对于 'high_potential'，提取相关的行政区和/或行业名称。\n"
+            "   - 对于 'general_chat'，提取关键实体或 null。\n\n"
+            "【极端重要提示】：如果用户输入仅仅是一个地名或行业名（例如：'浦东新区'），你必须结合上下文中的 assistant 提问来决定 intent！如果上一轮 assistant 问的是“挖掘哪个区的高潜客户？”，则 intent 必须是 'high_potential'！不要因为有地名就盲目判定。\n"
+            "你的回答必须是合法的 JSON 字符串，不能包含 markdown 标记，不加任何解释。"
         )
         
         messages = [{"role": "system", "content": system_prompt}]

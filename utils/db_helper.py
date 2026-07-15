@@ -1613,8 +1613,8 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
             
         score = d1_score + d2_score + d3_score + d4_score
         
-        # 如果 score < 10 (即D级)，直接过滤
-        if score < 10:
+        # 如果 score <= 10 (即D级及10分项)，直接过滤
+        if score <= 10:
             continue
             
         score = min(score, 100)

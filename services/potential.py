@@ -144,6 +144,57 @@ def extract_limit(k: str) -> Optional[int]:
         return result
     return None
 
+import requests
+
+def _sync_map_sentiment_tags(keyword: str) -> List[str]:
+    if not keyword:
+        return []
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+    if not api_key or "your_api_key" in api_key:
+        return []
+    
+    standard_tags = ["投资落地", "重大签约", "资本融资", "技术突破", "高管调研", "具化数据", "业务扩张", "企业资质", "上市", "IPO", "领导调研(国家级)", "领导调研(市级)", "领导调研(区级)", "领导调研", "签约", "开会", "企业设立", "新企成立", "子公司成立", "分支机构成立", "新基金设立", "项目建设", "厂房开办", "榜单资质"]
+    
+    prompt = f"""
+你是一个标签映射专家。用户输入了一个模糊的业务查询词，你需要将其映射为最接近的一个或多个标准商机标签。对于“有领导人调研的”、“被视察过的”、“大领导去过的”这种描述，应当映射到对应的“领导调研”系列标签。
+用户输入模糊词："{keyword}"
+
+可选的标准标签库：{standard_tags}
+
+请严格以 JSON 格式返回，包含 'tags' 字段（字符串数组）。如果没有合适的映射，返回空数组。不要包含 ```json 标记。
+示例输出：
+{{"tags": ["资本融资", "IPO"]}}
+"""
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.1
+        }
+        # Deepseek API uses /chat/completions endpoint
+        endpoint = base_url.rstrip("/") + "/chat/completions"
+        if not endpoint.startswith("http"):
+            endpoint = "https://" + endpoint
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=10.0)
+        response.raise_for_status()
+        
+        import json
+        content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        res = json.loads(content)
+        return res.get("tags", [])
+    except Exception as e:
+        print(f"Map sentiment tags error: {e}")
+        return []
+
 def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, raw_text: str = None) -> Dict[str, Any]:
     text_value = _clean_text(raw_text if raw_text else keyword)
     district = None
@@ -182,10 +233,18 @@ def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, ra
         cleaned = cleaned.replace(industry, " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
+    mapped_tags = []
+    if cleaned:
+        try:
+            mapped_tags = _sync_map_sentiment_tags(cleaned)
+        except Exception as e:
+            print(f"Sync call to _sync_map_sentiment_tags failed: {e}")
+
     return {
         "district": district,
         "industry": industry,
         "keyword": cleaned or None,
+        "mapped_tags": mapped_tags,
         "score_min": score_min,
         "days_limit": days_limit,
         "limit": limit,
@@ -207,6 +266,7 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
     raw_data = db.fetch_weixin_extract_data(limit=50000, district=district_param, days_limit=days_limit)
     
     keyword = filters.get("keyword") or ""
+    mapped_tags = filters.get("mapped_tags") or []
     industry = filters.get("industry") or ""
     
     keyword_lower = keyword.lower()
@@ -227,8 +287,16 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
         if industry_lower and industry_lower not in ind.lower() and industry_lower not in ent_name.lower():
             continue
             
-        if keyword_lower and keyword_lower not in ent_name.lower() and keyword_lower not in title.lower() and keyword_lower not in ind.lower():
-            continue
+        if keyword_lower:
+            hit_tags = (row.get("hit") or []) + (row.get("tags") or [])
+            if mapped_tags:
+                hit_tags_str = "".join(hit_tags)
+                if not any(t in hit_tags_str or any(ht in t for ht in hit_tags) for t in mapped_tags):
+                    continue
+            else:
+                hit_tags_str = " ".join(hit_tags).lower()
+                if keyword_lower not in hit_tags_str:
+                    continue
             
         # Map to the format expected by the rest of potential.py
         results.append({
