@@ -618,7 +618,9 @@
                         <h3 class="news-title">${titleContent}</h3>
                         ${article.abstract ? `<p class="news-desc">${escapeHtml(truncate(article.abstract, 120))}</p>` : ''}
                         <div class="news-meta">
-                            ${article.industry ? `<span class="meta-pill">🏭 ${escapeHtml(article.industry)}</span>` : ''}
+                            ${article.industry1 ? article.industry1.split('、').map(i => `<span class="meta-pill">🏭 ${escapeHtml(i)}</span>`).join('') : ''}
+                            ${article.industry2 ? article.industry2.split('、').map(i => `<span class="meta-pill">🏭 ${escapeHtml(i)}</span>`).join('') : ''}
+                            ${article.industry3 ? article.industry3.split('、').map(i => `<span class="meta-pill">🏭 ${escapeHtml(i)}</span>`).join('') : ''}
                             ${tagsHtml}
                             ${article.sources ? `<span class="meta-pill">📰 ${article.sources.length} 条来源</span>` : ''}
                         </div>

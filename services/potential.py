@@ -68,11 +68,6 @@ INDUSTRY_KEYWORDS = [
     "新材料", "汽车", "金融", "文创", "航运", "低空经济", "物联网", "工业互联网",
 ]
 
-NOISE_WORDS = [
-    "上海市", "上海", "推荐", "高潜", "潜在", "重点", "客户", "名单", "线索", "商机", "企业", "有哪些",
-    "给我", "帮我", "筛选", "查询", "查看", "导出", "excel", "Excel", "表格", "一批", "一份", "清单", "一些", "几个", "的", "看看", "介绍"
-]
-
 # SIGNAL_RULES 已废弃
 SIGNAL_RULES = []
 
@@ -113,22 +108,25 @@ def _parse_percent(value: Any) -> float:
 
 from utils.time_parser import extract_days_limit_smart
 
+
 def extract_limit(k: str) -> Optional[int]:
     import re
-    match = re.search(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)(?![月星季])', k)
+    match = re.search(
+        r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)(?![月星季])',
+        k)
     if match:
         num_str = match.group(1)
         if num_str.isdigit():
             return int(num_str)
-        
+
         num_map = {'零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
         unit_map = {'十': 10, '百': 100, '千': 1000, '万': 10000}
-        
+
         if num_str in num_map:
             return num_map[num_str]
         if num_str == '十':
             return 10
-            
+
         result = 0
         tmp = 0
         for char in num_str:
@@ -144,28 +142,49 @@ def extract_limit(k: str) -> Optional[int]:
         return result
     return None
 
+
 import requests
 
-def _sync_map_sentiment_tags(keyword: str) -> List[str]:
-    if not keyword:
-        return []
+
+def _sync_parse_user_intent(raw_text: str) -> dict:
+    if not raw_text:
+        return {}
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
     if not api_key or "your_api_key" in api_key:
-        return []
-    
-    standard_tags = ["投资落地", "重大签约", "资本融资", "技术突破", "高管调研", "具化数据", "业务扩张", "企业资质", "上市", "IPO", "领导调研(国家级)", "领导调研(市级)", "领导调研(区级)", "领导调研", "签约", "开会", "企业设立", "新企成立", "子公司成立", "分支机构成立", "新基金设立", "项目建设", "厂房开办", "榜单资质"]
-    
+        return {}
+
+    standard_tags = ["投资落地", "重大签约", "资本融资", "技术突破", "高管调研", "具化数据", "业务扩张", "企业资质",
+                     "上市", "IPO", "领导调研(国家级)", "领导调研(市级)", "领导调研(区级)", "领导调研", "签约", "开会",
+                     "企业设立", "新企成立", "子公司成立", "分支机构成立", "新基金设立", "项目建设", "厂房开办",
+                     "榜单资质"]
+
     prompt = f"""
-你是一个标签映射专家。用户输入了一个模糊的业务查询词，你需要将其映射为最接近的一个或多个标准商机标签。对于“有领导人调研的”、“被视察过的”、“大领导去过的”这种描述，应当映射到对应的“领导调研”系列标签。
-用户输入模糊词："{keyword}"
+你是一个高潜客户搜索意图分析专家。请从用户的输入中，提取出结构化的搜索条件。
+请忽略“我要找”、“帮我查”、“有哪些”、“推荐”等口语化噪音。如果用户没有明确提到某项条件，请将对应字段设为 null。
 
-可选的标准标签库：{standard_tags}
+输入: "{raw_text}"
 
-请严格以 JSON 格式返回，包含 'tags' 字段（字符串数组）。如果没有合适的映射，返回空数组。不要包含 ```json 标记。
+可选的标准商机标签库：{standard_tags}
+
+请严格以 JSON 格式返回，必须包含以下字段：
+- district: (字符串) 行政区名称，如“浦东新区”、“黄浦区”。如果没有提到则为 null。
+- industry: (字符串) 行业名称，如“先导产业”、“人工智能”、“医疗”。如果没有提到则为 null。
+- keyword: (字符串) 核心业务关键词（如特定的产品、概念）。如果有，提取出来；如果输入全是口语化噪音（例如“我要找一下”），必须为 null。
+- limit: (整数) 提取用户要求的数量限制（如“推荐5家”提取 5）。如果没有则为 null。
+- days_limit: (整数) 提取时间限制的天数（如“近一个月”提取 30，“近一周”提取 7）。如果没有则为 null。
+- tags: (字符串数组) 根据用户的输入，从【可选的标准商机标签库】中映射最接近的一个或多个标签。如果没有则为空数组 []。
+
 示例输出：
-{{"tags": ["资本融资", "IPO"]}}
+{{
+  "district": "浦东新区",
+  "industry": "先导产业",
+  "keyword": null,
+  "limit": null,
+  "days_limit": null,
+  "tags": []
+}}
 """
     try:
         headers = {
@@ -178,72 +197,51 @@ def _sync_map_sentiment_tags(keyword: str) -> List[str]:
             "response_format": {"type": "json_object"},
             "temperature": 0.1
         }
-        # Deepseek API uses /chat/completions endpoint
         endpoint = base_url.rstrip("/") + "/chat/completions"
         if not endpoint.startswith("http"):
             endpoint = "https://" + endpoint
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=10.0)
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=15.0)
         response.raise_for_status()
-        
+
         import json
         content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         if content.startswith("```json"):
             content = content[7:-3].strip()
         res = json.loads(content)
-        return res.get("tags", [])
+        return res
     except Exception as e:
-        print(f"Map sentiment tags error: {e}")
-        return []
+        print(f"Parse user intent error: {e}")
+        return {}
+
 
 def parse_filters(keyword: Optional[str], score_min: int = DEFAULT_SCORE_MIN, raw_text: str = None) -> Dict[str, Any]:
     text_value = _clean_text(raw_text if raw_text else keyword)
-    district = None
-    industry = None
 
-    for alias, full_name in DISTRICT_ALIASES.items():
-        if alias and alias in text_value:
-            district = full_name
-            break
+    intent = _sync_parse_user_intent(text_value)
 
-    for ind in INDUSTRY_KEYWORDS:
-        if ind and ind.lower() in text_value.lower():
-            industry = "人工智能" if ind == "AI" else ind
-            break
+    district = intent.get("district")
+    industry = intent.get("industry")
+    clean_keyword = intent.get("keyword")
 
-    days_limit = extract_days_limit_smart(text_value)
-    limit = extract_limit(text_value)
+    # Fallback to local regex for limits if LLM doesn't extract them
+    limit = intent.get("limit") or extract_limit(text_value)
+    days_limit = intent.get("days_limit") or extract_days_limit_smart(text_value)
+    mapped_tags = intent.get("tags") or []
 
-    cleaned = text_value
-    # 移除包含数量的表达方式 (排除带月、星、季的，防止误伤'近一个星期'等)
-    import re
-    cleaned = re.sub(r'(?:推荐|前|查|找|给|展示|列出)?\s*(\d+|[一二两三四五六七八九十百千万几]+)\s*(?:个|家|名|条|份)(?![月星季])', ' ', cleaned)
-    
-    # 移除常见时间词汇，防止其作为关键词干扰模糊查询
-    # 1. 匹配带数字的时间，如 "近一个月", "30天", "一年"
-    cleaned = re.sub(r'(?:近|过去|前|这几)?(\d+|[一二两三四五六七八九十百千万几]+)个?(月|周|星期|天|季度|年)内?', ' ', cleaned)
-    # 2. 匹配不带数字的常用相对时间
-    cleaned = re.sub(r'(今年|本年|本年度|这一年|半年|全部时间|所有时间|不限时间|全部)', ' ', cleaned)
-    cleaned = re.sub(r'(近|过去|这几|上个|上|本)(月|周|星期|天|季度|年)内?', ' ', cleaned)
-
-    for word in NOISE_WORDS:
-        cleaned = cleaned.replace(word, " ")
     if district:
-        cleaned = cleaned.replace(district, " ").replace(district.replace("新区", "").replace("区", ""), " ")
-    if industry:
-        cleaned = cleaned.replace(industry, " ")
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        for alias, full_name in DISTRICT_ALIASES.items():
+            if alias and alias in district:
+                district = full_name
+                break
 
-    mapped_tags = []
-    if cleaned:
-        try:
-            mapped_tags = _sync_map_sentiment_tags(cleaned)
-        except Exception as e:
-            print(f"Sync call to _sync_map_sentiment_tags failed: {e}")
+    if industry:
+        if industry.lower() == "ai":
+            industry = "人工智能"
 
     return {
         "district": district,
         "industry": industry,
-        "keyword": cleaned or None,
+        "keyword": clean_keyword,
         "mapped_tags": mapped_tags,
         "score_min": score_min,
         "days_limit": days_limit,
@@ -261,52 +259,59 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
     district = filters.get("district")
     district_param = None if district == "上海市" else district
     days_limit = filters.get("days_limit", 30)
-    
+
     # 增加 limit 至 50000 解除底层封印，并复用区域过滤标准
     raw_data = db.fetch_weixin_extract_data(limit=50000, district=district_param, days_limit=days_limit)
-    
+
     keyword = filters.get("keyword") or ""
     mapped_tags = filters.get("mapped_tags") or []
     industry = filters.get("industry") or ""
-    
+
     keyword_lower = keyword.lower()
     industry_lower = industry.lower()
-    
+
     results = []
     for row in raw_data:
         ent_name = row.get("ent_name") or ""
         ent_name = ent_name.strip()
-        
+
         # 过滤掉大模型提取失败或无有效名称的占位符
         if not ent_name or ent_name in {"-", "无", "未知", "不适用", "NA"} or len(ent_name) < 2:
             continue
-            
+
         ind = row.get("industry") or ""
+        ind1 = row.get("industry1") or ""
+        ind2 = row.get("industry2") or ""
+        ind3 = row.get("industry3") or ""
+        ind_all = (ind + " " + ind1 + " " + ind2 + " " + ind3).lower()
         title = row.get("title") or ""
-        
-        if industry_lower and industry_lower not in ind.lower() and industry_lower not in ent_name.lower():
+
+        if industry_lower and industry_lower not in ind_all and industry_lower not in ent_name.lower():
             continue
-            
-        if keyword_lower:
+
+        if keyword_lower or mapped_tags:
             hit_tags = (row.get("hit") or []) + (row.get("tags") or [])
             if mapped_tags:
                 hit_tags_str = "".join(hit_tags)
                 if not any(t in hit_tags_str or any(ht in t for ht in hit_tags) for t in mapped_tags):
                     continue
-            else:
+            elif keyword_lower:
                 hit_tags_str = " ".join(hit_tags).lower()
                 if keyword_lower not in hit_tags_str:
                     continue
-            
+
         # Map to the format expected by the rest of potential.py
         results.append({
             "name": ent_name,
-            "short_name": "", 
+            "short_name": "",
             "customer_name": ent_name,
             "region": row.get("district"),
             "province": "上海市",
             "city": "上海市",
             "industry": ind,
+            "industry1": ind1,
+            "industry2": ind2,
+            "industry3": ind3,
             "industry_alt": "",
             "marketing_industry_l1": "",
             "group_industry_l1": "",
@@ -338,19 +343,20 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
         now = datetime.datetime.now()
         placeholders = ", ".join([f":name_{i}" for i in range(len(company_names))])
         params = {f"name_{i}": name for i, name in enumerate(company_names)}
-        
+
         # 1. 关联查询标准企业全称 (brief2full_name)
         sql_brief = f"SELECT `brief_name`, `full_name` FROM brief2full_name WHERE `brief_name` IN ({placeholders})"
         try:
             brief_records = db.query_business_db(sql_brief, params)
-            brief_map = {r.get("brief_name"): r.get("full_name") for r in brief_records if r.get("brief_name") and r.get("full_name")}
+            brief_map = {r.get("brief_name"): r.get("full_name") for r in brief_records if
+                         r.get("brief_name") and r.get("full_name")}
             for row in results:
                 ent_name = row["name"]
                 if ent_name in brief_map:
                     row["customer_name"] = brief_map[ent_name]
         except Exception as e:
             db.log_event(None, "potential", "WARNING", f"关联企业标准名称失败: {e}")
-        
+
         # 2. 关联查询榜单信息 (ranking_ent_dtl_clue)
         sql = f"SELECT `企业名称`, `资质名称`, `榜单名称`, `链接`, `到期时间`, `榜单废弃` FROM ranking_ent_dtl_clue WHERE `企业名称` IN ({placeholders})"
         try:
@@ -360,7 +366,7 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
                 discarded = str(r.get("榜单废弃") or "").strip()
                 if discarded in ["1", "是", "true", "True", "废弃"]:
                     continue
-                
+
                 expire_str = str(r.get("到期时间") or "").strip()
                 if expire_str and expire_str not in ["-", "无", "0", "None"]:
                     try:
@@ -372,25 +378,25 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
                                 continue
                     except Exception:
                         pass
-                
+
                 ent_name = r.get("企业名称")
                 if not ent_name:
                     continue
                 if ent_name not in ranking_map:
                     ranking_map[ent_name] = {"qualifications": [], "ranking_names": [], "ranking_links": []}
-                    
+
                 qual = str(r.get("资质名称") or "").strip()
                 if qual and qual not in ranking_map[ent_name]["qualifications"]:
                     ranking_map[ent_name]["qualifications"].append(qual)
-                    
+
                 rank_name = str(r.get("榜单名称") or "").strip()
                 if rank_name and rank_name not in ranking_map[ent_name]["ranking_names"]:
                     ranking_map[ent_name]["ranking_names"].append(rank_name)
-                    
+
                 link = str(r.get("链接") or "").strip()
                 if link and link not in ranking_map[ent_name]["ranking_links"]:
                     ranking_map[ent_name]["ranking_links"].append(link)
-            
+
             for row in results:
                 ent_name = row["name"]
                 if ent_name in ranking_map:
@@ -399,13 +405,12 @@ def fetch_candidate_enterprises(filters: Dict[str, Any], limit: int = 300) -> Li
                     row["ranking_link"] = "，".join(ranking_map[ent_name]["ranking_links"])
         except Exception as e:
             db.log_event(None, "potential", "WARNING", f"关联榜单信息失败: {e}")
-            
+
     return results
 
 
 def fetch_enterprise_signals(candidates: List[Dict[str, Any]], max_candidates: int = 100) -> Dict[str, Dict[str, Any]]:
     return {}
-
 
 
 def score_enterprise(row: Dict[str, Any]) -> Tuple[int, List[str], Dict[str, int]]:
@@ -445,7 +450,8 @@ def build_next_action(row: Dict[str, Any], tags: List[str]) -> str:
     ])
     if _contains_any(industry + " ".join(tags), ["人工智能", "算力", "大数据", "云计算", "软件", "信息技术"]):
         return "建议客户经理优先跟进云资源、专线、算力和数据服务需求。"
-    if _contains_any(industry + " ".join(tags), ["智能制造", "机器人", "汽车", "新能源", "新材料", "半导体", "集成电路"]):
+    if _contains_any(industry + " ".join(tags),
+                     ["智能制造", "机器人", "汽车", "新能源", "新材料", "半导体", "集成电路"]):
         return "建议优先跟进工业互联网、园区专线、边缘计算和 ICT 集成需求。"
     return "建议客户经理开展首次触达，确认专线、云资源、ICT 集成和政策申报需求。"
 
@@ -469,7 +475,8 @@ def _build_enterprise_rag_document(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "title": name or "高潜候选企业",
         "content": content,
-        "publish_date": _clean_text(row.get("latest_date")) or _clean_text(row.get("registered_at")) or datetime.now().strftime("%Y-%m-%d"),
+        "publish_date": _clean_text(row.get("latest_date")) or _clean_text(
+            row.get("registered_at")) or datetime.now().strftime("%Y-%m-%d"),
         "source": "weixin_deepseek_extract_d_new",
         "link": _clean_text(row.get("latest_link")),
         "company": name,
@@ -504,7 +511,8 @@ def _build_news_rag_documents(candidates: List[Dict[str, Any]]) -> List[Dict[str
             "source": "opportunity_articles",
             "link": _clean_text(row.get("latest_link")),
             "company": name,
-            "district": _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(row.get("province")),
+            "district": _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(
+                row.get("province")),
             "industry": _clean_text(row.get("industry")) or _clean_text(row.get("industry_alt")),
             "doc_type": "news_signal",
         })
@@ -522,7 +530,7 @@ def _fetch_policy_rag_documents(filters: Dict[str, Any], limit: int = 12) -> Lis
     for idx in range(len(keywords)):
         like_parts.append(f"`标题` LIKE :kw{idx} OR `正文` LIKE :kw{idx} OR `关键词` LIKE :kw{idx}")
     sql = text(f"""
-        SELECT `标题` AS title, `正文` AS content, `网址` AS link, `发布单位` AS source, `发布时间` AS publish_date
+        SELECT `标题` AS title, LEFT(`正文`, 500) AS content, `网址` AS link, `发布单位` AS source, `发布时间` AS publish_date
         FROM zq_dtl_onenet_all
         WHERE {' OR '.join(like_parts)}
         ORDER BY `发布时间` DESC
@@ -592,7 +600,8 @@ def _rag_bonus(score: float) -> int:
     return 0
 
 
-def _run_potential_rag(filters: Dict[str, Any], candidates: List[Dict[str, Any]], user_id: int = None) -> Dict[str, Dict[str, Any]]:
+def _run_potential_rag(filters: Dict[str, Any], candidates: List[Dict[str, Any]], user_id: int = None) -> Dict[
+    str, Dict[str, Any]]:
     documents = []
     for row in candidates[:300]:
         name = _clean_text(row.get("name"))
@@ -647,7 +656,7 @@ def _run_potential_rag(filters: Dict[str, Any], candidates: List[Dict[str, Any]]
 
 def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> Dict[str, Any]:
     regional_score = item.get("score", 0)
-    
+
     if not rag_info:
         item["rag_score"] = 0.0
         item["rag_evidence"] = []
@@ -659,20 +668,22 @@ def _apply_rag_to_candidate(item: Dict[str, Any], rag_info: Dict[str, Any]) -> D
     evidence = rag_info.get("evidence") or []
     item["rag_score"] = round(score, 4)
     item["rag_evidence"] = evidence
-    
+
     item["score"] = regional_score
     item["level"] = "HOT" if regional_score >= 50 else "关注"
-    
+
     if evidence:
         signals = item.setdefault("signals", [])
         if "RAG强相关证据" not in signals:
             signals.append("RAG强相关证据")
         title = evidence[0].get("title") or "相关证据"
-        item["reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
+        item[
+            "reason"] = f"{item.get('reason', '')} RAG 证据“{title}”进一步证明其与当前筛选目标相关，建议优先核实业务需求。"
     return item
 
 
-def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score_parts: Dict[str, int]) -> Dict[str, Any]:
+def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score_parts: Dict[str, int]) -> Dict[
+    str, Any]:
     region = _clean_text(row.get("region")) or _clean_text(row.get("city")) or _clean_text(row.get("province"))
     industry = _clean_text(row.get("industry")) or "未标注"
     level = "HOT" if score >= 50 else "关注"
@@ -683,6 +694,9 @@ def _normalize_candidate(row: Dict[str, Any], score: int, tags: List[str], score
         "score": score,
         "level": level,
         "industry": industry,
+        "industry1": _clean_text(row.get("industry1")),
+        "industry2": _clean_text(row.get("industry2")),
+        "industry3": _clean_text(row.get("industry3")),
         "industry_alt": _clean_text(row.get("industry_alt")),
         "marketing_industry_l1": _clean_text(row.get("marketing_industry_l1")),
         "region": region or "未标注",
@@ -737,7 +751,8 @@ def _fallback_from_mock(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT) -> 
     return items[:limit] or []
 
 
-def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, skip_rag: bool = False) -> Tuple[List[Dict[str, Any]], int]:
+def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, skip_rag: bool = False) -> Tuple[
+    List[Dict[str, Any]], int]:
     try:
         candidates = fetch_candidate_enterprises(filters)
         company_rag = {} if skip_rag else _run_potential_rag(filters, candidates)
@@ -750,7 +765,7 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, ski
             name = _clean_text(row.get("name"))
             if not name or name in seen_names:
                 continue
-            
+
             if not _clean_text(row.get("latest_link")):
                 continue
 
@@ -783,7 +798,6 @@ def get_recommendations(filters: Dict[str, Any], limit: int = DEFAULT_LIMIT, ski
         return mock_items, len(mock_items)
 
 
-
 def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     static_dir = os.path.join(base_dir, "static", "generated")
@@ -799,9 +813,10 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
             "name": "企业名称",
             "customer_name": "企业标准名称",
             "region": "行政区",
-            "industry": "重点行业一",
-            "industry_alt": "重点行业二",
-            "marketing_industry_l1": "重点行业三",
+            "industry": "主行业",
+            "industry1": "重点行业一",
+            "industry2": "重点行业二",
+            "industry3": "重点行业三",
             "score": "推荐评分",
             "level": "推荐等级",
             "signals": "命中信号",
@@ -815,7 +830,8 @@ def write_items_to_excel(items: List[Dict[str, Any]], safe_scope: str) -> str:
             "ranking_link": "榜单原文链接",
         })
         if "命中信号" in df_excel.columns:
-            df_excel["命中信号"] = df_excel["命中信号"].apply(lambda value: "、".join(value) if isinstance(value, list) else value)
+            df_excel["命中信号"] = df_excel["命中信号"].apply(
+                lambda value: "、".join(value) if isinstance(value, list) else value)
         keep_columns = [
             "企业名称", "企业标准名称", "行政区", "重点行业一", "重点行业二", "重点行业三",
             "推荐评分", "推荐等级", "命中信号", "推荐理由", "下一步动作",
@@ -841,6 +857,8 @@ def _build_export_url(filters: Dict[str, Any]) -> str:
         params["keyword"] = filters["keyword"]
     if filters.get("limit"):
         params["limit"] = filters["limit"]
+    if filters.get("days_limit"):
+        params["days"] = filters["days_limit"]
     return "/api/potential/export?" + urlencode(params)
 
 
@@ -858,13 +876,13 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
     items, total_count = get_recommendations(filters, limit=limit)
     if user_limit:
         total_count = len(items)
-    
+
     if items:
         try:
             items = asyncio.run(_async_generate_all_reasons(items))
         except Exception as e:
             db.log_event(user_id, "potential", "WARNING", f"大模型润色推荐理由失败: {e}")
-            
+
     district_label = filters.get("district") or "全市"
     industry_label = filters.get("industry")
     title_parts = [district_label]
@@ -873,7 +891,8 @@ def handle(keyword: str, user_id: int = None, raw_text: str = None) -> dict:
     title = "".join(title_parts) + "高潜客户推荐"
 
     if items:
-        strong_count = sum(1 for item in items if int(item.get("score") or 0) >= int(filters.get("score_min") or DEFAULT_SCORE_MIN))
+        strong_count = sum(
+            1 for item in items if int(item.get("score") or 0) >= int(filters.get("score_min") or DEFAULT_SCORE_MIN))
         if strong_count:
             summary = f"满足过滤条件的高潜企业共有 {total_count} 家。为保证质量，已为您精选出排名前 {len(items)} 家进行展示。如需查看完整清单，请点击下方按钮导出完整版 Excel 表格。"
         else:
@@ -931,12 +950,13 @@ def _apply_excel_hyperlinks(excel_path: str, link_columns: List[str]) -> None:
 
 
 def export_excel(
-    district: Optional[str] = None,
-    industry: Optional[str] = None,
-    keyword: Optional[str] = None,
-    score_min: int = DEFAULT_SCORE_MIN,
-    limit: Optional[int] = None,
-    user_id: Optional[int] = None,
+        district: Optional[str] = None,
+        industry: Optional[str] = None,
+        keyword: Optional[str] = None,
+        score_min: int = DEFAULT_SCORE_MIN,
+        limit: Optional[int] = None,
+        user_id: Optional[int] = None,
+        days: Optional[int] = None,
 ) -> str:
     filter_text = " ".join([value for value in [district, industry, keyword] if value])
     filters = parse_filters(filter_text, score_min=score_min)
@@ -949,6 +969,8 @@ def export_excel(
     filters["score_min"] = score_min
     if limit is not None:
         filters["limit"] = limit
+    if days is not None:
+        filters["days_limit"] = days
 
     export_limit = limit if limit is not None else 500
     items, _ = get_recommendations(filters, limit=export_limit, skip_rag=True)
@@ -961,7 +983,7 @@ def export_excel(
 
 async def _async_generate_reason_with_client(client: AsyncOpenAI, model_name: str, item: dict) -> dict:
     rag_evidences = [e.get("title") for e in item.get("rag_evidence", [])]
-    
+
     prompt = f"""
 请作为顶级的大客户经理和售前架构师，为高潜企业“{item.get('name')}”撰写一段个性化的推荐理由和下一步行动建议。
 【已知企业信息】：
@@ -983,7 +1005,8 @@ RAG补充证据：{rag_evidences}
         response = await client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "你是一个顶级售前架构师，擅长用最敏锐的商业视角深度剖析企业新闻与资质背后的商机。"},
+                {"role": "system",
+                 "content": "你是一个顶级售前架构师，擅长用最敏锐的商业视角深度剖析企业新闻与资质背后的商机。"},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"},
@@ -1004,13 +1027,14 @@ RAG补充证据：{rag_evidences}
         print(f"Generate reason error for {item.get('name')}: {e}")
     return item
 
+
 async def _async_generate_all_reasons(items: list) -> list:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
     model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
     if not api_key or "your_api_key" in api_key:
         return items
-        
+
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     try:
         tasks = [_async_generate_reason_with_client(client, model_name, item) for item in items]

@@ -1322,6 +1322,19 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
             # Update region_priority (取最高优先级)
             existing["region_priority"] = max(existing.get("region_priority", 1), row.get("region_priority", 1))
             
+            # Merge industries across all articles for this company
+            for k in ["industry", "industry1", "industry2", "industry3"]:
+                val = (row.get(k) or "").strip()
+                if val:
+                    existing_val = (existing.get(k) or "").strip()
+                    if not existing_val:
+                        existing[k] = val
+                    else:
+                        parts = existing_val.split("、")
+                        if val not in parts:
+                            parts.append(val)
+                            existing[k] = "、".join(parts)
+            
             # If current row has a higher score, update the main display fields
             if score > existing["score"]:
                 existing["score"] = score
@@ -1333,7 +1346,6 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
                 existing["release_time_raw"] = release_time_raw
                 existing["link"] = row.get("link") or ""
                 existing["source_name"] = row.get("wechat_name") or "微信数据"
-                existing["industry"] = row.get("industry") or ""
         else:
             groups_dict[group_name][ent_name] = {
                 "ent_name": ent_name,
@@ -1347,6 +1359,9 @@ def get_articles(district: str = None, days_limit: int = 30) -> dict:
                 "source_name": row.get("wechat_name") or "微信数据",
                 "link": row.get("link") or "",
                 "industry": row.get("industry") or "",
+                "industry1": row.get("industry1") or "",
+                "industry2": row.get("industry2") or "",
+                "industry3": row.get("industry3") or "",
                 "region": group_name,
                 "sort_group": group_name,
                 "hit": row.get("hit") or [],
@@ -1472,7 +1487,7 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
                a.article_title, a.Abstract, a.Tag_SS, a.Tag_IPO, a.Tag_RZ, a.Tag_SG, a.OtherNature, 
                a.CapitalNature, a.NewsTag, a.region,
                a.publish_time, a.article_url, a.Scope, a.wechat_name, 
-               LEFT(a.article_content, 5000) AS article_content_prefix
+               LEFT(a.article_content, 200) AS article_content_prefix
         FROM weixin_deepseek_extract_d_new a
         {where_sql}
         ORDER BY a.publish_time DESC
@@ -1640,6 +1655,9 @@ def fetch_weixin_extract_data(limit: int = 1000, district: str = None, days_limi
             "release_time_raw": str(row.get("publish_time") or ""),
             "district": region,
             "industry": ind1,
+            "industry1": ind1,
+            "industry2": ind2,
+            "industry3": ind3,
             "score": score,
             "score_label": score_label,
             "hit": hit,

@@ -2673,7 +2673,7 @@
                                 <div class="potential-card-header">
                                     <div>
                                         <div class="potential-name">${nameHtml}</div>
-                                        <div class="potential-meta">${item.region || '未标注'} · ${item.industry || '未标注'}</div>
+                                        <div class="potential-meta">${item.region || '未标注'} · ${[item.industry1, item.industry2, item.industry3].filter(Boolean).join(' · ') || item.industry || '未标注'}</div>
                                     </div>
                                     <div class="potential-score">${item.score}<small>${item.level || '关注'}</small></div>
                                 </div>
